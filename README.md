@@ -37,6 +37,14 @@ References:
 - Highlighting a request in the UI opens it up in a separate panel with the raw HTTP content exposed
 - By default (for the MVP) the app just records the response and forwards the request automatically. The initial MVP is less a MITM tool and more a HTTP traffic inspector
 
+### Potential Crates
+- [ratatui](https://crates.io/crates/ratatui) for an easily-configurable tui
+- [rcgen](https://crates.io/crates/rcgen) for generating TLS certificates to decrypt traffic with
+- [tokio](https://crates.io/crates/tokio) for an async runtime
+- [crossterm](https://crates.io/crates/crossterm) for cross-platform keyboard event reading
+- [axum](https://crates.io/crates/axum) for simple web-server functionality to facilitate the proxying
+- [reqwest](https://crates.io/crates/reqwest) for forwarding HTTP requests
+
 ## Going Forward
 If we finish that and have time, consider the following features stretch goals:
 
