@@ -32,12 +32,12 @@
 - Annotate requests with variables that need to be filtered by, selected, modified etc.
   - A very very very minimalistic annotation DSL/markup lang would be nice here.
     - Something as simple as `%varname%` for a named variable that is pattern matched against, that could be selected against in a nushell pipe.
-    - `%varname | <user defined function%` could select a variable by pattern matching, and pipe that variable to a function, substituting its output for the variable space
+    - `%varname | <user defined function>%` could select a variable by pattern matching, and pipe that variable to a function, substituting its output for the variable space
     - `%["a", "list", "of", "values"]%` for a list of substitutions that should be made. (Any annotated request like this should actually be treated as a list of requests)
     -   It would also be good to have a way of defining temporary data like a expirable token, with a function that can produce a fresh value like: `%token: "eyJhbGciOiJIUzI...", exp: <a function which can determine if the token is expired>, ref: <a function which performs a token refresh and returns it>%`
 
 5. Channels
-At any point the user should be able to publish a target or subscope as a channel which can be read via command line in another context. In the CLI they can subscribe to the channel and consume it, piping each request received by that channel to programs and pipelines of their choosing. If at the end of the pipeline they wish to send a request, they can pipe it to a program like HTTPie, or HTTPx. And the output of our files should be designed with those use cases in mind. We may wish to include a custom formatter that can be piped to and.
+At any point the user should be able to publish a target or subscope as a channel which can be read via command line in another context. In the CLI they can subscribe to the channel and consume it, piping each request received by that channel to programs and pipelines of their choosing. If at the end of the pipeline they wish to send a request, they can pipe it to a program like HTTPie, or HTTPx. And the output of our files should be designed with those use cases in mind. We may wish to include a custom formatter that can be piped to.
 
 - In the TUI, the user should be able to select a current context (such as the entire target scope, or a subscope) and choose to publish it to a named outbox.
 - We will write an additional tool that handles a channel subscription (let's say for now it's called `xsub` for "praxis subscribe") which take in the channel name and allows the building of a pipeline from it like:
@@ -76,9 +76,13 @@ The general philosophy of `prxs` should be to make a distinction between the exp
 - This should be the main view of the TUI application and the first thing the user sees. (Similar to the repeater tab in BurpSuite)
 
 #### Implementation Notes
-- A good way to implement the channel functionality might be through [UNIX Domain Sockets](https://en.wikipedia.org/wiki/Unix_domain_socket), or even plain [network sockets](https://en.wikipedia.org/wiki/Network_socket) if that proves untenable.
+- A good way to implement the channel functionality might be through one of the following:
+    - [UNIX Domain Sockets](https://en.wikipedia.org/wiki/Unix_domain_socket)
+    - plain [network sockets](https://en.wikipedia.org/wiki/Network_socket) (if the UNIX Domain Sockets prove untenable)
+    - [Named pipes](https://linuxiac.com/how-to-use-pipes-and-named-pipes-in-linux-explained-with-examples/) ([example](https://askubuntu.com/questions/449132/why-use-a-named-pipe-instead-of-a-file))
 
 - As for the real time, async nature of the commands, our `xsub` and `xpub` commands should be able to operate as a continuous pipeline and continue running as long as the channel remains open. Implementing that might be one of the trickier parts of this project, but it may be possible to treat the socket as a stream and when the stream is published to the TUI portion of the program can provide a separator so that `xsub` knows how to break up the output of the stream into individual packets.
+    - There is a tool built into the GNU Coreutils called `stdbuf` which can control buffering from real time streams. [This question](https://unix.stackexchange.com/questions/200235/how-to-use-sed-to-manipulate-continuously-streaming-output) on stackexchange deals with using it and another command in conjunction with `sed` to deal with streams of text. It may prove useful in building the tool. It's possible that the use of that tool or a similar approach may help solve this problem.
 
 - Defining the storage of information to the disk:
   - The top level storage should be a session, this might be a combination of targets
@@ -91,5 +95,3 @@ The general philosophy of `prxs` should be to make a distinction between the exp
   - The information could be stored in several ways:
     - Static JSON or YAML (nice because it's editable)
     - A `.sqlite` file (very lightweight and fast, with the drawback of not being user editable as plain text)
-
-- One of the obstacles with a command line approach is buffered real-time stream data. There is a tool built into the GNU Coreutils called `stdbuf` which can control buffering from real time streams. [This question](https://unix.stackexchange.com/questions/200235/how-to-use-sed-to-manipulate-continuously-streaming-output) on stackexchange deals with using it and another command in conjunction with `sed` to deal with streams of text. It may prove useful in building the tool.
