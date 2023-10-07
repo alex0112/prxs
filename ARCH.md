@@ -83,6 +83,13 @@ The general philosophy of `prxs` should be to make a distinction between the exp
 - Defining the storage of information to the disk:
   - The top level storage should be a session, this might be a combination of targets
   - A target is a top level scope definition, a list of optional subscopes, and defined workflows.
+  - So: 
+      - `session` has many `targets` (but probably usually just one)
+      - `target` has many `subscopes`
+      - `target` has many `workflows`
+  
   - The information could be stored in several ways:
     - Static JSON or YAML (nice because it's editable)
     - A `.sqlite` file (very lightweight and fast, with the drawback of not being user editable as plain text)
+
+- One of the obstacles with a command line approach is buffered real-time stream data. There is a tool built into the GNU Coreutils called `stdbuf` which can control buffering from real time streams. [This question](https://unix.stackexchange.com/questions/200235/how-to-use-sed-to-manipulate-continuously-streaming-output) on stackexchange deals with using it and another command in conjunction with `sed` to deal with streams of text. It may prove useful in building the tool.
