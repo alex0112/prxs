@@ -49,6 +49,7 @@ References:
 ### Potential Crates
 
 - [ratatui](https://crates.io/crates/ratatui) for an easily-configurable tui
+- [inquire](https://github.com/mikaelmello/inquire) for interactive cli functionality
 - [rcgen](https://crates.io/crates/rcgen) for generating TLS certificates to decrypt traffic with
 - [tokio](https://crates.io/crates/tokio) for an async runtime
 - [crossterm](https://crates.io/crates/crossterm) for cross-platform keyboard event reading

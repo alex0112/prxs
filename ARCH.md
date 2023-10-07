@@ -4,7 +4,7 @@
 
 #### User Flow
 0. The user wishes to configure their machine for a MITM Attack
-- They run `prxs --init` which will launch an interactive command line experience that walks them through generating and self-signing a cert.
+- They run `prxs --init` which will launch an interactive command line experience that walks them through generating and self-signing a cert. (It would be nice to consider a flow using [this library](https://github.com/mikaelmello/inquire)
 - `prxs --init` will also create a file in `~/.config/prxs/prxs.conf` that stores persistent data such as user preferences, default editor (if they wish to override $EDITOR) etc. This file is an excellent candidate for entering into the users personal version control
 - It also creates a `.prxs.d/` directory in the home directory, where data such as sessions or anything the application needs to write to disk can be serialized and saved. 
 
