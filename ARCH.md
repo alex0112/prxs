@@ -10,8 +10,7 @@
 
 1. A user wishes to begin proxying/decrypting traffic. They spin up `prxs`, which launches a TUI showing them all incoming traffic
 - This creates a new session file (separate from the config file)
-  - Bonus feature: The session file can be encrypted if they so desire. The file could be password protected or require a GPG key to decrypt etc.
-- 
+- Bonus feature: The session file can be encrypted if they so desire. The file could be password protected or require a GPG key to decrypt etc.
 
 2. At this point the user wishes to set the scope of their target and reduce the signal to noise ratio, they can:
   - Define an ad-hoc command that will apply filtering of some kind (possibly by hitting `|` and defining the command in the TUI, which then sends it to their command line)
@@ -45,13 +44,9 @@ At any point the user should be able to publish a target or subscope as a channe
 
     ```
     xsub <channel name> | sed 's/p/P/g' | { grep -oP 'set-cookie: \K[^"]+' >> cookies.txt; cat; } | some-other-program
-
     ```
     
 - The above pipeline (which I totally tested and didn't just ask GPT3 to generate for me) capitalizes every 'p' character it finds, then looks for any set cookie headers and writes them to a file called "cookies.txt", then pipes the original request (with capital P's now) to a program named `some-other-program`.
-
-- It would be good to have a channel 
-
 - A user should additionally be able to publish modified requests *back* to the TUI. Imagine a command called `xpub`:
 
     ```
