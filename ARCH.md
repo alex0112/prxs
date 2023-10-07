@@ -80,6 +80,7 @@ The general philosophy of `prxs` should be to make a distinction between the exp
     - [UNIX Domain Sockets](https://en.wikipedia.org/wiki/Unix_domain_socket)
     - plain [network sockets](https://en.wikipedia.org/wiki/Network_socket) (if the UNIX Domain Sockets prove untenable)
     - [Named pipes](https://linuxiac.com/how-to-use-pipes-and-named-pipes-in-linux-explained-with-examples/) ([example](https://askubuntu.com/questions/449132/why-use-a-named-pipe-instead-of-a-file))
+        - Rust library for named pipes [here](https://docs.rs/unix-named-pipe/latest/unix_named_pipe/)
 
 - As for the real time, async nature of the commands, our `xsub` and `xpub` commands should be able to operate as a continuous pipeline and continue running as long as the channel remains open. Implementing that might be one of the trickier parts of this project, but it may be possible to treat the socket as a stream and when the stream is published to the TUI portion of the program can provide a separator so that `xsub` knows how to break up the output of the stream into individual packets.
     - There is a tool built into the GNU Coreutils called `stdbuf` which can control buffering from real time streams. [This question](https://unix.stackexchange.com/questions/200235/how-to-use-sed-to-manipulate-continuously-streaming-output) on stackexchange deals with using it and another command in conjunction with `sed` to deal with streams of text. It may prove useful in building the tool. It's possible that the use of that tool or a similar approach may help solve this problem.
