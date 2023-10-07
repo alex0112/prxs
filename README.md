@@ -62,6 +62,8 @@ References:
 3. A mix of 1 & 2, where the TUI allows for ad-hoc work, but custom commands can be developed or included with the installation, and the user can invoke a keystroke within the TUI to allow a selection or an entire request to be piped to a command, and the output to be reconsumed by the TUI
 4. Use sockets: an input socket, and an output socket. The user invokes the TUI (which also spins up the proxy), and in a separate terminal commands they wish to use can read from the custom socket to get output
 
+Additional thoughts on option 4 can be found in the file [ARCH.md](./ARCH.md)
+
 ## Additional features / UX Notes:
 
 - Config for user preferences in a file (version control)
