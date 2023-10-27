@@ -49,6 +49,7 @@ References:
 ### Potential Crates
 
 - [ratatui](https://crates.io/crates/ratatui) for an easily-configurable tui
+- [inquire](https://github.com/mikaelmello/inquire) for interactive cli functionality
 - [rcgen](https://crates.io/crates/rcgen) for generating TLS certificates to decrypt traffic with
 - [tokio](https://crates.io/crates/tokio) for an async runtime
 - [crossterm](https://crates.io/crates/crossterm) for cross-platform keyboard event reading
@@ -61,6 +62,8 @@ References:
 2. Solely TUI app: Just runs in a TUI, basically a terminal version of Burpsuite / A MITMProxy clone
 3. A mix of 1 & 2, where the TUI allows for ad-hoc work, but custom commands can be developed or included with the installation, and the user can invoke a keystroke within the TUI to allow a selection or an entire request to be piped to a command, and the output to be reconsumed by the TUI
 4. Use sockets: an input socket, and an output socket. The user invokes the TUI (which also spins up the proxy), and in a separate terminal commands they wish to use can read from the custom socket to get output
+
+Additional thoughts on option 4 can be found in the file [ARCH.md](./ARCH.md)
 
 ## Additional features / UX Notes:
 
