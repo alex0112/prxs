@@ -5,7 +5,7 @@
 #### User Flow
 0. The user wishes to configure their machine for a MITM Attack
 - They run `prxs --init` which will launch an interactive command line experience that walks them through generating and self-signing a cert. (It would be nice to consider a flow using [this library](https://github.com/mikaelmello/inquire)
-- `prxs --init` will also create a file in `~/.config/prxs/prxs.conf` that stores persistent data such as user preferences, default editor (if they wish to override $EDITOR) etc. This file is an excellent candidate for entering into the users personal version control
+- `prxs --init` will also create a file in `~/.config/prxs/prxs.conf` that stores persistent data such as user preferences, default editor (if they wish to override \$EDITOR) etc. This file is an excellent candidate for entering into the users personal version control
 - It also creates a `.prxs.d/` directory in the home directory, where data such as sessions or anything the application needs to write to disk can be serialized and saved. 
 
 1. A user wishes to begin proxying/decrypting traffic. They spin up `prxs`, which launches a TUI showing them all incoming traffic
@@ -97,3 +97,9 @@ The general philosophy of `prxs` should be to make a distinction between the exp
   - The information could be stored in several ways:
     - Static JSON or YAML (nice because it's editable)
     - A `.sqlite` file (very lightweight and fast, with the drawback of not being user editable as plain text)
+
+- The user can define a specific subset of requests (through a filter of domains, or just specifying one specific request, or all up until a specific time, whatever) to be opened in a new tab for processing of a specific type AND/OR passing all request which they have specified to a specific pipe, which can then be subscribed to outside of praxis and the requests can be processed as the user sees fit with their own tools
+
+- We should provide a command that works like `eval "$(prxs --subscribe --channel=5 --commands=zsh)"` to create a list of commands in the current shell that could be used to interact with a specific channel in easy and simple ways
+	- `prxs --subscribe --channel=5 --commands=zsh` would output a bunch of text which would define a bunch of commands that can be used in the shell specified, to interact with request being processed (`subscribe`) by the channel specified, and that would then be `eval`d to make the commands accessible to the user
+	- It would also perhaps be nice to just make `prxs --subscribe --channel=5` output all request being piped through channel 5 so that they don't need to source some functions to interact
