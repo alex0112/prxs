@@ -1,0 +1,14 @@
+[package]
+name = "prxs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+crossterm = "0.27.0"
+hyper = { version = "0.14.27", features = ["server", "client"] }
+ratatui = "0.24.0"
+rcgen = "0.11.3"
+reqwest = "0.11.22"
+tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
