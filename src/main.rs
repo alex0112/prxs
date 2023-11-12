@@ -1,4 +1,11 @@
-use crossterm::event::Event;
+use prxs::app::{App, AppResult};
+use prxs::event::{Event, EventHandler};
+use prxs::handler::handle_key_events;
+use prxs::tui::Tui;
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use std::io;
+
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
@@ -8,11 +15,46 @@ use tokio::sync::mpsc::{channel, unbounded_channel, Sender, UnboundedReceiver, U
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (tui, tx) = Tui::new();
-    let proxy = Proxy::new(tx).await;
+    //let (tui, tx) = TuiChannel::new();
+
+    // let tui_event_handler: EventHandler::new(100);
+    // let proxy = Proxy::new(tx).await;
+
     // and then just wait, show the TUI
     // TUI will listen to proxy_rx. When it gets a message, if it's a request, it'll query for
     // interaction, then send the response on the provided `Sender`, where it'll be processed
+
+    invoke_tui()?;
+
+    Ok(())
+}
+
+fn invoke_tui() -> AppResult<()> {
+    // Create an application.
+    let mut app = App::new();
+
+    // Initialize the terminal user interface.
+    let backend = CrosstermBackend::new(io::stderr());
+    let terminal = Terminal::new(backend)?;
+    let events = EventHandler::new(250);
+    let mut tui = Tui::new(terminal, events);
+    tui.init()?;
+
+    // Start the main loop.
+    while app.running {
+        // Render the user interface.
+        tui.draw(&mut app)?;
+        // Handle events.
+        match tui.events.next()? {
+            Event::Tick => app.tick(),
+            Event::Key(key_event) => handle_key_events(key_event, &mut app)?,
+            Event::Mouse(_) => {}
+            Event::Resize(_, _) => {}
+        }
+    }
+
+    // Exit the user interface.
+    tui.exit()?;
     Ok(())
 }
 
@@ -62,25 +104,28 @@ enum ProxyMessage {
 
 enum TuiMessage {}
 
-struct Tui {
+struct TuiChannel {
     proxy_rx: UnboundedReceiver<ProxyMessage>,
     input_rx: UnboundedReceiver<std::io::Result<Event>>,
 }
 
-impl Tui {
-    fn new() -> (Self, UnboundedSender<ProxyMessage>) {
-        let (input_tx, input_rx) = unbounded_channel();
-        std::thread::spawn(move || loop {
-            if let Err(e) = input_tx.send(crossterm::event::read()) {
-                eprintln!("Couldn't send event to Tui: {e})");
-            }
-        });
+// impl TuiChannel {
+//     fn new() -> (Self, UnboundedSender<ProxyMessage>) {
+//         let (input_tx, input_rx): (
+//             UnboundedSender<ProxyMessage>,
+//             UnboundedReciever<ProxyMessage>,
+//         ) = unbounded_channel();
+//         std::thread::spawn(move || loop {
+//             if let Err(e) = input_tx.send(crossterm::event::read()) {
+//                 eprintln!("Couldn't send event to Tui: {e})");
+//             }
+//         });
 
-        let (tx_to_tui, proxy_rx) = unbounded_channel();
+//         let (tx_to_tui, proxy_rx) = unbounded_channel();
 
-        (Self { input_rx, proxy_rx }, tx_to_tui)
-    }
-}
+//         (Self { input_rx, proxy_rx }, tx_to_tui)
+//     }
+// }
 
 struct Proxy {}
 
