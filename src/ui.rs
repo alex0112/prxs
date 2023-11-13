@@ -26,32 +26,18 @@ pub fn render(app: &mut App, frame: &mut Frame) {
 
     let mut list_state = ListState::default().with_selected(Some(app.current_request_index));
 
+    // The List needs to know about its index
     frame.render_stateful_widget(
         http_request_list_widget(app),
         top_level_layout[0],
         &mut list_state,
     );
 
-    // frame.render_widget(http_request_list_widget(app), top_level_layout[0]);
-
     frame.render_widget(http_request_widget(app), req_resp_layout[0]);
     frame.render_widget(http_response_widget(app), req_resp_layout[1]);
 }
 
 fn http_request_list_widget(app: &mut App) -> List {
-    // let items = vec![
-    //     ListItem::new("HTTP GET https://example.com/foo"),
-    //     ListItem::new("HTTP POST https://example.com/bar"),
-    //     ListItem::new("HTTP GET https://example.com/foo/bar"),
-    //     ListItem::new("HTTP PATCH https://example.com/baz/bang/bamph"),
-    //     ListItem::new("HTTP DELETE https://example.com/foo/bar"),
-    //     ListItem::new("HTTP PUT https://example.com/foo/zork/quux"),
-    //     ListItem::new("HTTP GET https://example.com/foo/zyzzx?query=string"),
-    //     ListItem::new("HTTP OPTIONS https://example.com/foo/zork"),
-    //     ListItem::new("HTTP GET https://example.com/foo/hello/sailor"),
-    //     ListItem::new("HTTP POST https://example.com/foo/bar/baz/bang/bamph"),
-    // ];
-
     let items: Vec<_> = app
         .requests
         .iter()
@@ -72,7 +58,8 @@ fn http_request_list_widget(app: &mut App) -> List {
                 .bg(Color::Cyan)
                 .add_modifier(Modifier::ITALIC),
         )
-        .highlight_symbol(">>")
+        //        .highlight_symbol(">>")
+        .highlight_symbol("* ")
 }
 
 fn http_request_widget(app: &mut App) -> Paragraph {
