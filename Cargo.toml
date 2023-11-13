@@ -2,7 +2,6 @@
 name = "prxs"
 version = "0.1.0"
 authors = ["alex <alex0112@protonmail.com>", "june <june put your email here>"]
-license = "MIT"
 edition = "2021"
 
 [dependencies]
