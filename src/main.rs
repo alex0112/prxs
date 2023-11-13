@@ -6,6 +6,7 @@ use request::RequestInteraction;
 use std::{future::Future, io, pin::Pin};
 use tui::Tui;
 
+use http::request::Builder;
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
@@ -51,6 +52,35 @@ async fn invoke_tui() -> AppResult<()> {
     Ok(())
 }
 
+async fn clone_request(req: Request<Body>) -> (Request<Body>, Request<Body>) {
+    fn build_builder(req: &Request<Body>) -> Builder {
+        let mut builder = Request::builder()
+            .uri(req.uri())
+            .method(req.method())
+            .version(req.version());
+
+        for (name, value) in req.headers() {
+            builder = builder.header(name, value);
+        }
+
+        builder
+    }
+
+    let first = build_builder(&req);
+    let second = build_builder(&req);
+
+    // TODO: Refuse to process a request if it's too large 'cause it could give us an OOM or
+    // something with this function
+    let body_data = hyper::body::to_bytes(req)
+        .await
+        .expect("This req was already constructed by hyper so it's trustworthy");
+
+    (
+        first.body(body_data.clone().into()).unwrap(),
+        second.body(body_data.into()).unwrap(),
+    )
+}
+
 async fn handle_proxied_req(
     req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
@@ -65,23 +95,7 @@ async fn handle_proxied_req(
         }
     }
 
-    // TODO: Refuse to process a request if it's too large 'cause it could give us an OOM or
-    // something with this function
-    let req_body = hyper::body::to_bytes(req)
-        .await
-        .expect("This req was already constructed by hyper so it's trustworthy");
-
-    // So unfortunately we need to "clone" the Request (it's not actually cloning it as Request
-    // doesn't impl Clone, see hyper#1300, but whatever) because we need to hold onto an owned
-    // `Request` here to pass it into the `client.request` down below, but we also need the
-    // `request::Request` to hold onto an owned `hyper::Request` so it can be replayed later or
-    // viewed or whatever else. So this is what we have to do.
-    let send_req = Request::builder()
-        .body(Body::from(req_body.clone()))
-        .expect("We just deconstructed this");
-    let hold_req = Request::builder()
-        .body(Body::from(req_body))
-        .expect("We just deconstructed this");
+    let (send_req, hold_req) = clone_request(req).await;
 
     let (tui_tx, mut tui_rx) = channel(1);
 
@@ -97,7 +111,7 @@ async fn handle_proxied_req(
                 Err(e) => Ok(Response::new(format!("Couldn't proxy request: {e}").into())),
             }
         }
-        RequestInteraction::Drop => Ok(Response::new("".into()))
+        RequestInteraction::Drop => Ok(Response::new("".into())),
     }
 }
 

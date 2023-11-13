@@ -41,7 +41,7 @@ fn http_request_list_widget(app: &App) -> List {
     let items: Vec<_> = app
         .requests
         .iter()
-        .map(|request| format!("{:?}", request.inner))
+        .map(|request| format!("{} {}", request.method(), request.uri()))
         .map(ListItem::new)
         .collect();
 
@@ -63,10 +63,11 @@ fn http_request_list_widget(app: &App) -> List {
 }
 
 fn http_request_widget(app: &App) -> Paragraph {
-    let display_text: String = match app.requests.get(app.current_request_index) {
-        Some(request) => format!("{:?}", request.body()),
-        None => "".to_string(),
-    };
+    let display_text = app
+        .requests
+        .get(app.current_request_index)
+        .map(|req| format!("{:?}", req.body()))
+        .unwrap_or_default();
 
     Paragraph::new(display_text)
         .block(
