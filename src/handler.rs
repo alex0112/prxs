@@ -17,11 +17,11 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
         }
 
         // Counter handlers
-        KeyCode::Up | KeyCode::Char('k') => {
+        KeyCode::Down | KeyCode::Char('j') => {
             app.increment_list_index();
         }
 
-        KeyCode::Down | KeyCode::Char('j') => {
+        KeyCode::Up | KeyCode::Char('k') => {
             app.decrement_list_index();
         }
         // Other handlers you could add here.
