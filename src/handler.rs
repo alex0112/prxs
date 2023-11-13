@@ -8,18 +8,21 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.quit();
         }
+
         // Exit application on `Ctrl-C`
         KeyCode::Char('c') | KeyCode::Char('C') => {
             if key_event.modifiers == KeyModifiers::CONTROL {
                 app.quit();
             }
         }
+
         // Counter handlers
-        KeyCode::Right => {
-            app.increment_counter();
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.increment_list_index();
         }
-        KeyCode::Left => {
-            app.decrement_counter();
+
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.decrement_list_index();
         }
         // Other handlers you could add here.
         _ => {}
