@@ -8,7 +8,7 @@ use ratatui::{
 use crate::app::App;
 
 /// Renders the user interface widgets.
-pub fn render(app: &mut App, frame: &mut Frame) {
+pub fn render(app: &App, frame: &mut Frame) {
     // This is where you add new widgets.
     // See the following resources:
     // - https://docs.rs/ratatui/latest/ratatui/widgets/index.html
@@ -37,11 +37,11 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     frame.render_widget(http_response_widget(app), req_resp_layout[1]);
 }
 
-fn http_request_list_widget(app: &mut App) -> List {
+fn http_request_list_widget(app: &App) -> List {
     let items: Vec<_> = app
         .requests
         .iter()
-        .map(|request| format!("HTTP {} {}", request.verb, request.domain))
+        .map(|request| format!("{:?}", request.inner))
         .map(ListItem::new)
         .collect();
 
@@ -62,9 +62,9 @@ fn http_request_list_widget(app: &mut App) -> List {
         .highlight_symbol("* ")
 }
 
-fn http_request_widget(app: &mut App) -> Paragraph {
+fn http_request_widget(app: &App) -> Paragraph {
     let display_text: String = match app.requests.get(app.current_request_index) {
-        Some(request) => request.request_body.to_string(),
+        Some(request) => format!("{:?}", request.body()),
         None => "".to_string(),
     };
 
@@ -80,9 +80,9 @@ fn http_request_widget(app: &mut App) -> Paragraph {
         .alignment(Alignment::Left)
 }
 
-fn http_response_widget(app: &mut App) -> Paragraph {
+fn http_response_widget(app: &App) -> Paragraph {
     let display_text: String = match app.requests.get(app.current_request_index) {
-        Some(request) => request.response_body.to_string(),
+        Some(_request) => "Haven't implemented this yet :(".to_string(),
         None => "".to_string(),
     };
 

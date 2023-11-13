@@ -1,44 +1,52 @@
-use std::error;
-use std::vec::Vec;
+use crate::{
+    event::EventHandler,
+    request::{Request, RequestInteraction},
+    tui::Tui,
+    ProxyMessage,
+};
+use crossterm::event::{Event, KeyCode, KeyModifiers};
+use std::{error, fmt::Debug, future::Future, io, pin::Pin};
+use tokio::{
+    select,
+    sync::mpsc::{Sender, UnboundedReceiver},
+};
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 
 /// Application.
-#[derive(Debug)]
 pub struct App {
-    /// Is the application running?
-    pub running: bool,
-
     /// Track what the current highlighted item in the list is.
     pub current_request_index: usize,
 
     /// Temporary list of requests
-    pub requests: Vec<DummyRequest>,
-}
+    pub requests: Vec<Request>,
 
-impl Default for App {
-    fn default() -> Self {
-        Self {
-            running: true,
-            current_request_index: 0,
-            requests: dummy_http_data(),
-        }
-    }
+    /// The the thread which handles key/mouse events asynchronously
+    pub event_handler: EventHandler,
+
+    /// The "Server" which may or may not return an error at some point, so we need to keep
+    /// watching it
+    pub proxy_server: Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>>,
+
+    /// The receiver for events sent from the proxy
+    pub proxy_rx: UnboundedReceiver<ProxyMessage>,
 }
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Handles the tick event of the terminal.
-    pub fn tick(&self) {}
-
-    /// Set running to false to quit the application.
-    pub fn quit(&mut self) {
-        self.running = false;
+    pub fn new(
+        event_handler: EventHandler,
+        proxy_server: Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>>,
+        proxy_rx: UnboundedReceiver<ProxyMessage>,
+    ) -> Self {
+        Self {
+            current_request_index: 0,
+            requests: vec![],
+            event_handler,
+            proxy_server,
+            proxy_rx,
+        }
     }
 
     pub fn increment_list_index(&mut self) {
@@ -48,228 +56,92 @@ impl App {
     }
 
     pub fn decrement_list_index(&mut self) {
-        if self.current_request_index == 0 {
-            self.current_request_index = self.requests.len();
-        }
+        self.current_request_index = self
+            .current_request_index
+            .checked_sub(1)
+            .unwrap_or(self.requests.len())
+    }
 
-        if let Some(res) = self.current_request_index.checked_sub(1) {
-            self.current_request_index = res;
+    fn quit(&mut self, tui: &mut Tui) {
+        // we're quitting. so what if we return an error.
+        tui.exit().unwrap();
+        std::process::exit(0);
+    }
+
+    pub async fn run(&mut self, tui: &mut Tui) {
+        loop {
+            tui.draw(self).expect("Couldn't draw tui");
+
+            // this will just keep going until you kill the app, basically
+            select! {
+                ev = self.event_handler.next() => {
+                    self.handle_event(ev, tui).await;
+                }
+                res = &mut self.proxy_server => {
+                    println!("Got err from server: {res:?}");
+                    self.quit(tui);
+                }
+                req = self.proxy_rx.recv() => {
+                    if let Some(req) = req {
+                        self.handle_request(req).await;
+                    }
+                }
+            }
         }
+    }
+
+    async fn handle_event(&mut self, event: io::Result<Event>, tui: &mut Tui) {
+        match event {
+            Err(e) => {
+                println!("Agh! Everything has broken! {e}");
+                self.quit(tui);
+            }
+            Ok(Event::Key(key)) => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => self.quit(tui),
+                KeyCode::Char('c') | KeyCode::Char('C')
+                    if key.modifiers == KeyModifiers::CONTROL =>
+                {
+                    self.quit(tui)
+                }
+                KeyCode::Down | KeyCode::Char('j') => self.increment_list_index(),
+                KeyCode::Up | KeyCode::Char('k') => self.decrement_list_index(),
+                KeyCode::Char('f') | KeyCode::Char('F') => {
+                    if let Some(req) = self.requests.get_mut(self.current_request_index) {
+                        req.send_interaction(RequestInteraction::Forward).await;
+                    }
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    if let Some(req) = self.requests.get_mut(self.current_request_index) {
+                        req.send_interaction(RequestInteraction::Drop).await;
+                    }
+                }
+                _ => {}
+            },
+            // eh. don't care.
+            _ => {}
+        }
+    }
+
+    async fn handle_request(
+        &mut self,
+        (req, sender): (hyper::Request<hyper::Body>, Sender<RequestInteraction>),
+    ) {
+        // just add it to the list, then handle interacting with it in the `handle_event`
+        // when it's selected
+        self.requests.push(Request {
+            interaction_tx: Some(sender),
+            inner: req,
+        });
+        self.current_request_index = self.requests.len() - 1;
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct DummyRequest {
-    pub domain: String,
-    pub verb: String,
-    pub request_body: String,
-    pub response_body: String,
-}
-
-fn dummy_http_data() -> Vec<DummyRequest> {
-    vec![
-        DummyRequest {
-            domain: "hackerone.com/foo/bar/baz".to_owned(),
-            verb: "GET".to_owned(),
-            request_body: "
-GET /zork?type=team HTTP/1.1
-Host: hackerone.com
-
-Cookie: h1_device_id=178f6f86; __Host-session=dEt6aEtQ08...;
-User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
-Accept-Language: en-US,en;q=0.5
-Accept-Encoding: gzip, deflate, br
-Upgrade-Insecure-Requests: 1
-Sec-Fetch-Dest: document
-Sec-Fetch-Mode: navigate
-Sec-Fetch-Site: none
-Sec-Fetch-User: ?1
-Dnt: 1
-Sec-Gpc: 1
-Te: trailers
-Connection: close
-".to_owned()
-            ,
-
-            response_body: "
-HTTP/2 200 OK
-
-Content-Type: text/html; charset=utf-8
-Cache-Control: no-store
-Content-Disposition: inline; filename='response.html'
-X-Request-Id: 30125139-8cbf-4cc3-bb1f-f98f86caec3c
-Set-Cookie: __Host-session=bE5hSz...
-Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-X-Frame-Options: DENY
-X-Content-Type-Options: nosniff
-X-Xss-Protection: 1; mode=block
-X-Download-Options: noopen
-X-Permitted-Cross-Domain-Policies: none
-Referrer-Policy: strict-origin-when-cross-origin
-Expect-Ct: enforce, max-age=86400
-Content-Security-Policy: default-src 'none'; base-uri 'self'; block-all-mixed-content; child-src www.yout...
-Cf-Cache-Status: DYNAMIC
-Server: cloudflare
-Cf-Ray: 825282af6b029872-SJC
-
-Here haz content
-".to_owned(),
-        },
-
-        DummyRequest {
-            domain: "https://example.com/foobar".to_owned(),
-            verb: "POST".to_owned(),
-            request_body: "
-POST example.com/foobar HTTP/1.1
-Host: example.com
-
-Cookie: h1_device_id=178f6f86; __Host-session=dEt6aEtQ08...;
-User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
-Accept-Language: en-US,en;q=0.5
-Accept-Encoding: gzip, deflate, br
-Upgrade-Insecure-Requests: 1
-Connection: close
-".to_owned()
-            ,
-
-            response_body: "
-HTTP/2 200 OK
-
-Content-Type: text/html; charset=utf-8
-Cache-Control: no-store
-Content-Disposition: inline; filename='response.html'
-X-Request-Id: 30125139-8cbf-4cc3-bb1f-f98f86caec3c
-Set-Cookie: __Host-session=bE5hSz...
-Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-Referrer-Policy: strict-origin-when-cross-origin
-Expect-Ct: enforce, max-age=86400
-Cf-Ray: 825282af6b029872-SJC
-
-Moar content
-".to_owned(),
-        },
-        DummyRequest {
-            domain: "https://foobar.com/hello".to_owned(),
-            verb: "PUT".to_owned(),
-            request_body: "
-PUT /hello HTTP/1.1
-Host: foobar.com
-
-
-Sec-Fetch-Dest: document
-Sec-Fetch-Mode: navigate
-Sec-Fetch-Site: none
-Sec-Fetch-User: ?1
-Dnt: 1
-Sec-Gpc: 1
-Te: trailers
-Connection: close
-".to_owned()
-            ,
-
-            response_body: "
-HTTP/2 200 OK
-
-Content-Type: text/html; charset=utf-8
-Cache-Control: no-store
-Content-Disposition: inline; filename='response.html'
-X-Request-Id: 30125139-8cbf-4cc3-bb1f-f98f86caec3c
-X-Clacks-Overhead: GNU Terry Pratchett
-Expect-Ct: enforce, max-age=86400
-Content-Security-Policy: default-src 'none'; base-uri 'self'; block-all-mixed-content; child-src www.yout...
-Cf-Cache-Status: DYNAMIC
-Server: cloudflare
-Cf-Ray: 825282af6b029872-SJC
-
-Here haz content
-".to_owned(),
-        },
-        DummyRequest {
-            domain: "https://api.github.com/repos/octocat/Spoon-Knife/issues".to_owned(),
-            verb: "POST".to_owned(),
-            request_body: "
-POST /repos/octocat/Spoon-Knife/issues HTTP/1.1
-Host: api.github.com
-
-Accept-Encoding: gzip, deflate, br
-Upgrade-Insecure-Requests: 1
-Sec-Fetch-Dest: document
-Dnt: 1
-Sec-Gpc: 1
-Te: trailers
-Connection: close
-".to_owned()
-            ,
-
-            response_body: "
-HTTP/2 200 OK
-
-Content-Type: application/json; charset=utf-8
-Cache-Control: no-store
-Cf-Cache-Status: DYNAMIC
-Server: cloudflare
-Cf-Ray: 825282af6b029872-SJC
-
-[
-  {
-    'id': 1,
-    'node_id': 'MDU6SXNzdWUx',
-    'url': 'https://api.github.com/repos/octocat/Hello-World/issues/1347',
-    'repository_url': 'https://api.github.com/repos/octocat/Hello-World',
-    'labels_url': 'https://api.github.com/repos/octocat/Hello-World/issues/1347/labels{/name}',
-    'comments_url': 'https://api.github.com/repos/octocat/Hello-World/issues/1347/comments',
-    'events_url': 'https://api.github.com/repos/octocat/Hello-World/issues/1347/events',
-    'html_url': 'https://github.com/octocat/Hello-World/issues/1347',
-    'number': 1347,
-    'state': 'open',
-    'title': 'Found a bug',
-    'body': 'I'm having a problem with this.',
-    'user': {
-      'login': 'octocat',
-      'id': 1,
-      'node_id': 'MDQ6VXNlcjE=',
-      'avatar_url': 'https://github.com/images/error/octocat_happy.gif',
-      'gravatar_id': '',
-      'url': 'https://api.github.com/users/octocat',
-      'html_url': 'https://github.com/octocat',
-      'followers_url': 'https://api.github.com/users/octocat/followers',
-      'following_url': 'https://api.github.com/users/octocat/following{/other_user}',
-      'gists_url': 'https://api.github.com/users/octocat/gists{/gist_id}',
-      'starred_url': 'https://api.github.com/users/octocat/starred{/owner}{/repo}',
-      'subscriptions_url': 'https://api.github.com/users/octocat/subscriptions',
-      'organizations_url': 'https://api.github.com/users/octocat/orgs',
-      'repos_url': 'https://api.github.com/users/octocat/repos',
-      'events_url': 'https://api.github.com/users/octocat/events{/privacy}',
-      'received_events_url': 'https://api.github.com/users/octocat/received_events',
-      'type': 'User',
-      'site_admin': false
-    },
-]
-
-".to_owned(),
-        },
-        DummyRequest {
-            domain: "https://api.zork.com/resource/foo".to_owned(),
-            verb: "OPTIONS".to_owned(),
-            request_body: "
-OPTIONS /resource/foo
-Access-Control-Request-Method: DELETE
-Access-Control-Request-Headers: origin, x-requested-with
-Origin: https://thegreat.underground.empire
-".to_owned()
-            ,
-
-            response_body: "
-HTTP/1.1 204 No Content
-Connection: keep-alive
-Access-Control-Allow-Origin: https://foo.bar.org
-Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE
-Access-Control-Max-Age: 86400
-".to_owned(),
-        },
-
-
-    ]
+impl Debug for App {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct("App")
+            .field("current_request_index", &self.current_request_index)
+            .field("requests", &self.requests)
+            .field("event_handler", &self.event_handler)
+            .finish()
+    }
 }

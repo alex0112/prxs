@@ -1,11 +1,11 @@
 use crate::app::{App, AppResult};
-use crate::event::EventHandler;
 use crate::ui;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
-use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
-use ratatui::backend::Backend;
-use ratatui::Terminal;
-use std::io;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{prelude::CrosstermBackend, Terminal};
+use std::io::{self, Stdout};
 use std::panic;
 
 /// Representation of a terminal user interface.
@@ -13,17 +13,15 @@ use std::panic;
 /// It is responsible for setting up the terminal,
 /// initializing the interface and handling the draw events.
 #[derive(Debug)]
-pub struct Tui<B: Backend> {
+pub struct Tui {
     /// Interface to the Terminal.
-    terminal: Terminal<B>,
-    /// Terminal event handler.
-    pub events: EventHandler,
+    terminal: Terminal<CrosstermBackend<Stdout>>,
 }
 
-impl<B: Backend> Tui<B> {
+impl Tui {
     /// Constructs a new instance of [`Tui`].
-    pub fn new(terminal: Terminal<B>, events: EventHandler) -> Self {
-        Self { terminal, events }
+    pub fn new(terminal: Terminal<CrosstermBackend<Stdout>>) -> Self {
+        Self { terminal }
     }
 
     /// Initializes the terminal interface.
@@ -31,7 +29,7 @@ impl<B: Backend> Tui<B> {
     /// It enables the raw mode and sets terminal properties.
     pub fn init(&mut self) -> AppResult<()> {
         terminal::enable_raw_mode()?;
-        crossterm::execute!(io::stderr(), EnterAlternateScreen, EnableMouseCapture)?;
+        crossterm::execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
 
         // Define a custom panic hook to reset the terminal properties.
         // This way, you won't have your terminal messed up if an unexpected error happens.
@@ -50,7 +48,7 @@ impl<B: Backend> Tui<B> {
     ///
     /// [`Draw`]: ratatui::Terminal::draw
     /// [`rendering`]: crate::ui:render
-    pub fn draw(&mut self, app: &mut App) -> AppResult<()> {
+    pub fn draw(&mut self, app: &App) -> io::Result<()> {
         self.terminal.draw(|frame| ui::render(app, frame))?;
         Ok(())
     }
@@ -61,7 +59,7 @@ impl<B: Backend> Tui<B> {
     /// the terminal properties if unexpected errors occur.
     fn reset() -> AppResult<()> {
         terminal::disable_raw_mode()?;
-        crossterm::execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
+        crossterm::execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
         Ok(())
     }
 

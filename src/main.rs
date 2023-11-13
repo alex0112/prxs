@@ -1,60 +1,53 @@
-use prxs::app::{App, AppResult};
-use prxs::event::{Event, EventHandler};
-use prxs::handler::handle_key_events;
-use prxs::tui::Tui;
+use app::{App, AppResult};
+use event::EventHandler;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use std::io;
+use request::RequestInteraction;
+use std::{future::Future, io, pin::Pin};
+use tui::Tui;
 
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
 };
 use std::{convert::Infallible, io::Write, net::SocketAddr};
-use tokio::sync::mpsc::{channel, unbounded_channel, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{channel, unbounded_channel, Sender, UnboundedSender};
+
+/// Application.
+mod app;
+
+/// Terminal events handler.
+mod event;
+
+/// Widget renderer.
+mod ui;
+
+/// Terminal user interface
+mod tui;
+
+/// Request wrapper struct
+mod request;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //let (tui, tx) = TuiChannel::new();
-
-    // let tui_event_handler: EventHandler::new(100);
-    // let proxy = Proxy::new(tx).await;
-
-    // and then just wait, show the TUI
-    // TUI will listen to proxy_rx. When it gets a message, if it's a request, it'll query for
-    // interaction, then send the response on the provided `Sender`, where it'll be processed
-
-    invoke_tui()?;
-
-    Ok(())
+async fn main() -> AppResult<()> {
+    invoke_tui().await
 }
 
-fn invoke_tui() -> AppResult<()> {
-    // Create an application.
-    let mut app = App::new();
+async fn invoke_tui() -> AppResult<()> {
+    let (proxy_tx, proxy_rx) = unbounded_channel();
+    let server = spawn_proxy(proxy_tx).await;
 
     // Initialize the terminal user interface.
-    let backend = CrosstermBackend::new(io::stderr());
+    let backend = CrosstermBackend::new(io::stdout());
     let terminal = Terminal::new(backend)?;
-    let events = EventHandler::new(250);
-    let mut tui = Tui::new(terminal, events);
+    let events = EventHandler::new();
+    let mut tui = Tui::new(terminal);
     tui.init()?;
 
-    // Start the main loop.
-    while app.running {
-        // Render the user interface.
-        tui.draw(&mut app)?;
-        // Handle events.
-        match tui.events.next()? {
-            Event::Tick => app.tick(),
-            Event::Key(key_event) => handle_key_events(key_event, &mut app)?,
-            Event::Mouse(_) => {}
-            Event::Resize(_, _) => {}
-        }
-    }
+    // Create an application.
+    let mut app = App::new(events, server, proxy_rx);
 
-    // Exit the user interface.
-    tui.exit()?;
+    app.run(&mut tui).await;
     Ok(())
 }
 
@@ -72,91 +65,61 @@ async fn handle_proxied_req(
         }
     }
 
+    // TODO: Refuse to process a request if it's too large 'cause it could give us an OOM or
+    // something with this function
+    let req_body = hyper::body::to_bytes(req)
+        .await
+        .expect("This req was already constructed by hyper so it's trustworthy");
+
+    // So unfortunately we need to "clone" the Request (it's not actually cloning it as Request
+    // doesn't impl Clone, see hyper#1300, but whatever) because we need to hold onto an owned
+    // `Request` here to pass it into the `client.request` down below, but we also need the
+    // `request::Request` to hold onto an owned `hyper::Request` so it can be replayed later or
+    // viewed or whatever else. So this is what we have to do.
+    let send_req = Request::builder()
+        .body(Body::from(req_body.clone()))
+        .expect("We just deconstructed this");
+    let hold_req = Request::builder()
+        .body(Body::from(req_body))
+        .expect("We just deconstructed this");
+
     let (tui_tx, mut tui_rx) = channel(1);
 
-    tx.send(ProxyMessage::Request(req, tui_tx)).unwrap();
+    tx.send((send_req, tui_tx)).unwrap();
 
-    let (interaction, req) = tui_rx.recv().await.unwrap();
+    let interaction = tui_rx.recv().await.unwrap();
 
     match interaction {
         RequestInteraction::Forward => {
             let client = Client::new();
-            let response = client.request(req).await;
-            println!("got response: {response:?}");
-
-            Ok(Response::new("hello!".into()))
+            match client.request(hold_req).await {
+                Ok(resp) => Ok(resp),
+                Err(e) => Ok(Response::new(format!("Couldn't proxy request: {e}").into())),
+            }
         }
-        RequestInteraction::Drop => {
-            todo!()
-        }
+        RequestInteraction::Drop => Ok(Response::new("".into()))
     }
 }
 
-enum RequestInteraction {
-    r#Drop,
-    Forward,
-}
+pub type ProxyMessage = (Request<Body>, Sender<RequestInteraction>);
 
-enum ProxyMessage {
-    HyperErr(hyper::Error),
-    Request(Request<Body>, Sender<(RequestInteraction, Request<Body>)>),
-}
+// We're erasing the type here 'cause afaict it's impossible to name the type that results from
+// calling `serve` and also all we really care about is that it's a future which may return a
+// result
+async fn spawn_proxy(
+    tui_tx: UnboundedSender<ProxyMessage>,
+) -> Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-enum TuiMessage {}
+    let make_svc = make_service_fn(move |_conn| {
+        let tui_tx = tui_tx.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |req| {
+                let tui_tx = tui_tx.clone();
+                handle_proxied_req(req, tui_tx)
+            }))
+        }
+    });
 
-struct TuiChannel {
-    proxy_rx: UnboundedReceiver<ProxyMessage>,
-    input_rx: UnboundedReceiver<std::io::Result<Event>>,
-}
-
-// impl TuiChannel {
-//     fn new() -> (Self, UnboundedSender<ProxyMessage>) {
-//         let (input_tx, input_rx): (
-//             UnboundedSender<ProxyMessage>,
-//             UnboundedReciever<ProxyMessage>,
-//         ) = unbounded_channel();
-//         std::thread::spawn(move || loop {
-//             if let Err(e) = input_tx.send(crossterm::event::read()) {
-//                 eprintln!("Couldn't send event to Tui: {e})");
-//             }
-//         });
-
-//         let (tx_to_tui, proxy_rx) = unbounded_channel();
-
-//         (Self { input_rx, proxy_rx }, tx_to_tui)
-//     }
-// }
-
-struct Proxy {}
-
-impl Proxy {
-    async fn new(tui_tx: UnboundedSender<ProxyMessage>) -> Self {
-        let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-
-        let tx = tui_tx.clone();
-        let make_svc = make_service_fn(move |_conn| {
-            let tui_tx = tui_tx.clone();
-            async move {
-                Ok::<_, Infallible>(service_fn(move |req| {
-                    let tui_tx = tui_tx.clone();
-                    handle_proxied_req(req, tui_tx)
-                }))
-            }
-        });
-
-        let server = Server::bind(&addr).serve(make_svc);
-
-        tokio::spawn(async move {
-            if let Err(e) = server.await {
-                eprintln!("server error: {e}");
-                if let Err(e) = tx.send(ProxyMessage::HyperErr(e)) {
-                    eprintln!(
-                        "Agh! And now we can't tell anyone else that we ran into an error: {e}"
-                    );
-                }
-            }
-        });
-
-        Self {}
-    }
+    Box::pin(Server::bind(&addr).serve(make_svc))
 }
