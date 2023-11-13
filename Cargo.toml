@@ -1,14 +1,14 @@
 [package]
 name = "prxs"
 version = "0.1.0"
+authors = ["alex <alex0112@protonmail.com>", "june <june put your email here>"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-crossterm = "0.27.0"
-hyper = { version = "0.14.27", features = ["server", "client"] }
-ratatui = "0.24.0"
-rcgen = "0.11.3"
-reqwest = "0.11.22"
-tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
+crossterm = { version = "0.27.0", default-features = false }
+ratatui = { version = "0.24.0", default-features = false, features = ["crossterm"] }
+rcgen = { version = "0.11.3", default-features = false }
+reqwest = { version = "0.11.22", default-features = false }
+tokio = { version = "1.33.0", default-features = false, features = ["macros", "rt-multi-thread"] }
+hyper = { version = "0.14.27", default-features = false, features = ["server", "client", "stream"] }
+http = { version = "0.2.11", default-features = false }
