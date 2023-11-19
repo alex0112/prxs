@@ -1,15 +1,18 @@
 use crate::{
     event::EventHandler,
-    request::{Request, RequestInteraction},
+    request::{ProxyInteraction, Request, RequestInteraction},
+    response_waiter::{RequestResponse, ResponseWaiter},
     tui::Tui,
     ProxyMessage,
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};
+use futures_util::stream::StreamExt;
 use std::{error, fmt::Debug, future::Future, io, pin::Pin};
 use tokio::{
     select,
     sync::mpsc::{Sender, UnboundedReceiver},
 };
+use uuid::Uuid;
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -31,6 +34,8 @@ pub struct App {
 
     /// The receiver for events sent from the proxy
     pub proxy_rx: UnboundedReceiver<ProxyMessage>,
+
+    pub response_waiter: ResponseWaiter,
 }
 
 impl App {
@@ -46,6 +51,7 @@ impl App {
             event_handler,
             proxy_server,
             proxy_rx,
+            response_waiter: ResponseWaiter::default(),
         }
     }
 
@@ -86,6 +92,11 @@ impl App {
                         self.handle_request(req).await;
                     }
                 }
+                resp = &mut self.response_waiter.next() => {
+                    if let Some(resp) = resp {
+                        self.handle_request_response(resp).await;
+                    }
+                }
             }
         }
     }
@@ -107,12 +118,24 @@ impl App {
                 KeyCode::Up | KeyCode::Char('k') => self.decrement_list_index(),
                 KeyCode::Char('f') | KeyCode::Char('F') => {
                     if let Some(req) = self.requests.get_mut(self.current_request_index) {
-                        req.send_interaction(RequestInteraction::Forward).await;
+                        if let Some(mut rx) =
+                            req.send_interaction(RequestInteraction::Forward).await
+                        {
+                            let id = req.id;
+                            self.response_waiter.submit(Box::pin(async move {
+                                let response = rx
+                                    .recv()
+                                    .await
+                                    .expect("uhhh I don't know how to handle a None here");
+
+                                RequestResponse { id, response }
+                            }));
+                        }
                     }
                 }
                 KeyCode::Char('d') | KeyCode::Char('D') => {
                     if let Some(req) = self.requests.get_mut(self.current_request_index) {
-                        req.send_interaction(RequestInteraction::Drop).await;
+                        _ = req.send_interaction(RequestInteraction::Drop).await;
                     }
                 }
                 _ => {}
@@ -124,15 +147,26 @@ impl App {
 
     async fn handle_request(
         &mut self,
-        (req, sender): (hyper::Request<hyper::Body>, Sender<RequestInteraction>),
+        (req, sender): (hyper::Request<hyper::Body>, Sender<ProxyInteraction>),
     ) {
         // just add it to the list, then handle interacting with it in the `handle_event`
         // when it's selected
         self.requests.push(Request {
+            id: Uuid::new_v4(),
             interaction_tx: Some(sender),
             inner: req,
+            resp: None,
         });
         self.current_request_index = self.requests.len() - 1;
+    }
+
+    async fn handle_request_response(&mut self, resp: RequestResponse) {
+        let Some(req) = self.requests.iter_mut().find(|r| r.id == resp.id) else {
+            println!("Couldn't find request for id {}", resp.id);
+            return;
+        };
+
+        req.store_response(resp).await;
     }
 }
 
