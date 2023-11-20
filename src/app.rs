@@ -10,7 +10,7 @@ use futures_util::stream::StreamExt;
 use std::{error, fmt::Debug, future::Future, io, pin::Pin};
 use tokio::{
     select,
-    sync::mpsc::{Sender, UnboundedReceiver},
+    sync::{mpsc::UnboundedReceiver, oneshot},
 };
 use uuid::Uuid;
 
@@ -118,13 +118,10 @@ impl App {
                 KeyCode::Up | KeyCode::Char('k') => self.decrement_list_index(),
                 KeyCode::Char('f') | KeyCode::Char('F') => {
                     if let Some(req) = self.requests.get_mut(self.current_request_index) {
-                        if let Some(mut rx) =
-                            req.send_interaction(RequestInteraction::Forward).await
-                        {
+                        if let Some(rx) = req.send_interaction(RequestInteraction::Forward).await {
                             let id = req.id;
                             self.response_waiter.submit(Box::pin(async move {
                                 let response = rx
-                                    .recv()
                                     .await
                                     .expect("uhhh I don't know how to handle a None here");
 
@@ -147,7 +144,10 @@ impl App {
 
     async fn handle_request(
         &mut self,
-        (req, sender): (hyper::Request<hyper::Body>, Sender<ProxyInteraction>),
+        (req, sender): (
+            hyper::Request<hyper::Body>,
+            oneshot::Sender<ProxyInteraction>,
+        ),
     ) {
         // just add it to the list, then handle interacting with it in the `handle_event`
         // when it's selected

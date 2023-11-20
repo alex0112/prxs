@@ -14,7 +14,10 @@ use std::{
     net::SocketAddr,
     pin::Pin,
 };
-use tokio::sync::mpsc::{channel, unbounded_channel, Sender, UnboundedSender};
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedSender},
+    oneshot::{self, channel},
+};
 
 /// Application.
 mod app;
@@ -128,11 +131,11 @@ async fn handle_proxied_req(
 
     let (send_req, hold_req) = clone_request(req).await;
 
-    let (tui_tx, mut tui_rx) = channel(1);
+    let (tui_tx, tui_rx) = channel();
 
     tx.send((send_req, tui_tx)).unwrap();
 
-    let interaction = tui_rx.recv().await.unwrap();
+    let interaction = tui_rx.await.unwrap();
 
     match interaction {
         ProxyInteraction::Forward(tx) => {
@@ -147,8 +150,8 @@ async fn handle_proxied_req(
                 Err(e) => (Err(e.to_string()), Err(e)),
             };
 
-            if let Err(e) = tx.send(send_resp).await {
-                println!("Couldn't send response to tui: {e}");
+            if let Err(e) = tx.send(send_resp) {
+                println!("Couldn't send response to tui: {e:?}");
             }
 
             fw_resp
@@ -157,7 +160,7 @@ async fn handle_proxied_req(
     }
 }
 
-pub type ProxyMessage = (Request<Body>, Sender<ProxyInteraction>);
+pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 
 // We're erasing the type here 'cause afaict it's impossible to name the type that results from
 // calling `serve` and also all we really care about is that it's a future which may return a
