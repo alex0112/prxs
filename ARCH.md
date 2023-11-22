@@ -6,7 +6,7 @@
 0. The user wishes to configure their machine for a MITM Attack
 - They run `prxs --init` which will launch an interactive command line experience that walks them through generating and self-signing a cert. (It would be nice to consider a flow using [this library](https://github.com/mikaelmello/inquire)
 - `prxs --init` will also create a file in `~/.config/prxs/prxs.conf` that stores persistent data such as user preferences, default editor (if they wish to override \$EDITOR) etc. This file is an excellent candidate for entering into the users personal version control
-- It also creates a `.prxs.d/` directory in the home directory, where data such as sessions or anything the application needs to write to disk can be serialized and saved. 
+- It also creates a `.prxs.d/` directory in the home directory, where data such as sessions or anything the application needs to write to disk can be serialized and saved.
 
 1. A user wishes to begin proxying/decrypting traffic. They spin up `prxs`, which launches a TUI showing them all incoming traffic
 - This creates a new session file (separate from the config file)
@@ -45,7 +45,7 @@ At any point the user should be able to publish a target or subscope as a channe
     ```
     xsub <channel name> | sed 's/p/P/g' | { grep -oP 'set-cookie: \K[^"]+' >> cookies.txt; cat; } | some-other-program
     ```
-    
+
 - The above pipeline (which I totally tested and didn't just ask GPT3 to generate for me) capitalizes every 'p' character it finds, then looks for any set cookie headers and writes them to a file called "cookies.txt", then pipes the original request (with capital P's now) to a program named `some-other-program`.
 - A user should additionally be able to publish modified requests *back* to the TUI. Imagine a command called `xpub`:
 
@@ -89,11 +89,11 @@ The general philosophy of `prxs` should be to make a distinction between the exp
 - Defining the storage of information to the disk:
   - The top level storage should be a session, this might be a combination of targets
   - A target is a top level scope definition, a list of optional subscopes, and defined workflows.
-  - So: 
+  - So:
       - `session` has many `targets` (but probably usually just one)
       - `target` has many `subscopes`
       - `target` has many `workflows`
-  
+
   - The information could be stored in several ways:
     - Static JSON or YAML (nice because it's editable)
     - A `.sqlite` file (very lightweight and fast, with the drawback of not being user editable as plain text)
@@ -103,3 +103,36 @@ The general philosophy of `prxs` should be to make a distinction between the exp
 - We should provide a command that works like `eval "$(prxs --subscribe --channel=5 --commands=zsh)"` to create a list of commands in the current shell that could be used to interact with a specific channel in easy and simple ways
 	- `prxs --subscribe --channel=5 --commands=zsh` would output a bunch of text which would define a bunch of commands that can be used in the shell specified, to interact with request being processed (`subscribe`) by the channel specified, and that would then be `eval`d to make the commands accessible to the user
 	- It would also perhaps be nice to just make `prxs --subscribe --channel=5` output all request being piped through channel 5 so that they don't need to source some functions to interact
+
+## Internal Message Passing
+
+- most labels are just a message wrapped by the channel being used to send it
+	- e.g. `proxy_tx(response)`
+- if its `obj.call` then it's just a function call to facilitate a send
+	- e.g. `res.send_interaction(RequestInteraction)`
+- there are numbers to more clearly show the flow of things. they're slightly counter-intuitive (there are four 4's 'cause they happen effectively at the same time), but (imo) most clearly represent what's happening
+
+```mermaid
+flowchart LR
+	proxy(["Proxy"])
+	proxy_server(["Proxy Server"])
+	events(["Events"])
+	app(["App"])
+	response_waiter(["Response Waiter"])
+	request(["Request"])
+
+	%% the main loop
+	proxy_server-- "proxy_server(Result<(), hyper::Error>)" -->app
+	proxy-- "1. proxy_rx(hyper::Request)" -->app
+	events-- "2. event_handler(crossterm::Event)" -->app
+	response_waiter-- "6. response_waiter(RequestResponse)" -->app
+
+	%% when an interaction happens
+	app-- "3. req.send_interaction(RequestInteraction)" -->request
+	request-- "4. interaction_tx(RequestInteraction)" -->proxy
+	app-- "4. response_waiter.submit(Future<Output = RequestResponse>)" -->response_waiter
+	proxy-- "5. response_tx(hyper::Response)" -->response_waiter
+
+	%% when we receive a response
+	app-- "7. req.store_response(RequestResponse)" -->request
+```

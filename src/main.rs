@@ -1,18 +1,23 @@
 use app::{App, AppResult};
 use event::EventHandler;
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
-use request::RequestInteraction;
-use std::{future::Future, io, pin::Pin};
+use request::ProxyInteraction;
 use tui::Tui;
 
-use http::request::Builder;
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
 };
-use std::{convert::Infallible, io::Write, net::SocketAddr};
-use tokio::sync::mpsc::{channel, unbounded_channel, Sender, UnboundedSender};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::{
+    future::Future,
+    io::{self, Write},
+    net::SocketAddr,
+    pin::Pin,
+};
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedSender},
+    oneshot::{self, channel},
+};
 
 /// Application.
 mod app;
@@ -28,6 +33,9 @@ mod tui;
 
 /// Request wrapper struct
 mod request;
+
+/// The module that waits on responses from forwarded requests
+mod response_waiter;
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -53,7 +61,7 @@ async fn invoke_tui() -> AppResult<()> {
 }
 
 async fn clone_request(req: Request<Body>) -> (Request<Body>, Request<Body>) {
-    fn build_builder(req: &Request<Body>) -> Builder {
+    fn build_builder(req: &Request<Body>) -> http::request::Builder {
         let mut builder = Request::builder()
             .uri(req.uri())
             .method(req.method())
@@ -81,10 +89,36 @@ async fn clone_request(req: Request<Body>) -> (Request<Body>, Request<Body>) {
     )
 }
 
+async fn clone_response(resp: Response<Body>) -> (Response<Body>, Response<Body>) {
+    fn build_builder(resp: &Response<Body>) -> http::response::Builder {
+        let mut builder = Response::builder()
+            .status(resp.status())
+            .version(resp.version());
+
+        for (name, value) in resp.headers() {
+            builder = builder.header(name, value);
+        }
+
+        builder
+    }
+
+    let first = build_builder(&resp);
+    let second = build_builder(&resp);
+
+    let body_data = hyper::body::to_bytes(resp)
+        .await
+        .expect("This resp was already constructed by hyper so it's trustworthy");
+
+    (
+        first.body(body_data.clone().into()).unwrap(),
+        second.body(body_data.into()).unwrap(),
+    )
+}
+
 async fn handle_proxied_req(
     req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
-) -> Result<Response<Body>, Infallible> {
+) -> Result<Response<Body>, hyper::Error> {
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -97,25 +131,36 @@ async fn handle_proxied_req(
 
     let (send_req, hold_req) = clone_request(req).await;
 
-    let (tui_tx, mut tui_rx) = channel(1);
+    let (tui_tx, tui_rx) = channel();
 
     tx.send((send_req, tui_tx)).unwrap();
 
-    let interaction = tui_rx.recv().await.unwrap();
+    let interaction = tui_rx.await.unwrap();
 
     match interaction {
-        RequestInteraction::Forward => {
+        ProxyInteraction::Forward(tx) => {
             let client = Client::new();
-            match client.request(hold_req).await {
-                Ok(resp) => Ok(resp),
-                Err(e) => Ok(Response::new(format!("Couldn't proxy request: {e}").into())),
+            let resp = client.request(hold_req).await;
+
+            let (send_resp, fw_resp) = match resp {
+                Ok(resp) => {
+                    let (send_resp, fw_resp) = clone_response(resp).await;
+                    (Ok(send_resp), Ok(fw_resp))
+                }
+                Err(e) => (Err(e.to_string()), Err(e)),
+            };
+
+            if let Err(e) = tx.send(send_resp) {
+                println!("Couldn't send response to tui: {e:?}");
             }
+
+            fw_resp
         }
-        RequestInteraction::Drop => Ok(Response::new("".into())),
+        ProxyInteraction::Drop => Ok(Response::new("".into())),
     }
 }
 
-pub type ProxyMessage = (Request<Body>, Sender<RequestInteraction>);
+pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 
 // We're erasing the type here 'cause afaict it's impossible to name the type that results from
 // calling `serve` and also all we really care about is that it's a future which may return a
@@ -128,7 +173,7 @@ async fn spawn_proxy(
     let make_svc = make_service_fn(move |_conn| {
         let tui_tx = tui_tx.clone();
         async move {
-            Ok::<_, Infallible>(service_fn(move |req| {
+            Ok::<_, hyper::Error>(service_fn(move |req| {
                 let tui_tx = tui_tx.clone();
                 handle_proxied_req(req, tui_tx)
             }))

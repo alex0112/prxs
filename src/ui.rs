@@ -82,10 +82,11 @@ fn http_request_widget(app: &App) -> Paragraph {
 }
 
 fn http_response_widget(app: &App) -> Paragraph {
-    let display_text: String = match app.requests.get(app.current_request_index) {
-        Some(_request) => "Haven't implemented this yet :(".to_string(),
-        None => "".to_string(),
-    };
+    let display_text = app
+        .requests
+        .get(app.current_request_index)
+        .and_then(|req| req.resp.as_ref())
+        .map_or_else(String::new, |resp| format!("{:?}", resp.response));
 
     Paragraph::new(display_text)
         .block(
