@@ -11,3 +11,8 @@ ratatui = { version = "0.24.0", default-features = false, features = ["crossterm
 tokio = { version = "1.33.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 hyper = { version = "0.14.27", default-features = false, features = ["server", "client", "stream", "http1", "tcp"] }
 http = { version = "0.2.11", default-features = false }
+clap = { version = "4.4.8", features = ["derive"] }
+toml = "0.8.8"
+clap-serde-derive = "0.2.1"
+serde = "1.0.193"
+dirs-next = "2.0.0"
