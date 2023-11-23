@@ -5,6 +5,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::{ request::Request };
 use crate::app::App;
 
 /// Renders the user interface widgets.
@@ -58,7 +59,6 @@ fn http_request_list_widget(app: &App) -> List {
                 .bg(Color::Cyan)
                 .add_modifier(Modifier::ITALIC),
         )
-        //        .highlight_symbol(">>")
         .highlight_symbol("* ")
 }
 
@@ -66,7 +66,7 @@ fn http_request_widget(app: &App) -> Paragraph {
     let display_text = app
         .requests
         .get(app.current_request_index)
-        .map(|req| format!("{:?}", req.body()))
+        .map(format_req)
         .unwrap_or_default();
 
     Paragraph::new(display_text)
@@ -79,6 +79,25 @@ fn http_request_widget(app: &App) -> Paragraph {
         )
         .style(Style::default())
         .alignment(Alignment::Left)
+}
+
+fn format_req(req: &Request) -> String {
+    format!("{:?} {:} {:}\n{:}\n\n{:?}", 
+            req.version(),
+            req.method(),
+            req.uri(),
+            format_headers(req),
+            req.body(),
+    )
+}
+
+fn format_headers(req: &Request) -> String {
+    req.headers().iter()
+        .map(|(key, val)| {
+            format!("{}: {}", key, val.to_str().unwrap())
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 fn http_response_widget(app: &App) -> Paragraph {
