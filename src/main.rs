@@ -1,4 +1,5 @@
 use app::{App, AppResult};
+use config::Config;
 use event::EventHandler;
 use request::ProxyInteraction;
 use tui::Tui;
@@ -8,12 +9,7 @@ use hyper::{
     Body, Client, Request, Response, Server,
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{
-    future::Future,
-    io::{self, Write},
-    net::SocketAddr,
-    pin::Pin,
-};
+use std::{future::Future, io, net::SocketAddr, pin::Pin};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
     oneshot::{self, channel},
@@ -37,14 +33,15 @@ mod request;
 /// The module that waits on responses from forwarded requests
 mod response_waiter;
 
+/// The config struct to manage options
+mod config;
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
-    invoke_tui().await
-}
+    let config = Config::retrieve();
 
-async fn invoke_tui() -> AppResult<()> {
     let (proxy_tx, proxy_rx) = unbounded_channel();
-    let server = spawn_proxy(proxy_tx).await;
+    let server = spawn_proxy(proxy_tx, &config).await;
 
     // Initialize the terminal user interface.
     let backend = CrosstermBackend::new(io::stdout());
@@ -119,16 +116,6 @@ async fn handle_proxied_req(
     req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
 ) -> Result<Response<Body>, hyper::Error> {
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("requests.log")
-    {
-        if let Err(e) = writeln!(file, "{req:?}") {
-            eprintln!("Couldn't write to file: {e}");
-        }
-    }
-
     let (send_req, hold_req) = clone_request(req).await;
 
     let (tui_tx, tui_rx) = channel();
@@ -167,8 +154,9 @@ pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 // result
 async fn spawn_proxy(
     tui_tx: UnboundedSender<ProxyMessage>,
+    config: &Config,
 ) -> Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
 
     let make_svc = make_service_fn(move |_conn| {
         let tui_tx = tui_tx.clone();
