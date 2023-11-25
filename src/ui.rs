@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::{ request::Request };
+use crate::request::Request;
 use crate::app::App;
 
 /// Renders the user interface widgets.
