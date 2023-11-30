@@ -1,6 +1,10 @@
 use clap::Parser;
 use clap_serde_derive::ClapSerde;
-use std::{fs::read_to_string, path::PathBuf};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs::read_to_string,
+    path::{Path, PathBuf},
+};
 
 #[derive(ClapSerde, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -17,6 +21,9 @@ pub struct Config {
     #[default(8080)]
     #[arg(long, short, help = "The port to run on")]
     pub port: u16,
+
+    #[arg(long = "session", short, help = "The session file to open")]
+    pub session_file: Option<PathBuf>,
 }
 
 impl Config {
@@ -42,5 +49,40 @@ impl Config {
             path.push("config.toml");
             path
         })
+    }
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct Session {
+    pub filter: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SessionSaveError {
+    #[error("Couldn't serialize data: {0}")]
+    Toml(#[from] toml::ser::Error),
+    #[error("Couldn't save to file: {0}")]
+    IO(#[from] std::io::Error),
+}
+
+impl Session {
+    pub fn save(&self, file: impl AsRef<Path>) -> Result<(), SessionSaveError> {
+        let toml_str = toml::to_string(&self)?;
+        Ok(std::fs::write(file, toml_str)?)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SessionRestoreError {
+    #[error("Couldn't read file: {0}")]
+    IO(#[from] std::io::Error),
+    #[error("Couldn't deserialize to struct: {0}")]
+    Toml(#[from] toml::de::Error),
+}
+
+impl Session {
+    pub fn restore(file: impl AsRef<Path>) -> Result<Self, SessionRestoreError> {
+        let toml_str = std::fs::read_to_string(file)?;
+        Ok(toml::from_str(&toml_str)?)
     }
 }

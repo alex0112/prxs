@@ -1,5 +1,5 @@
 use app::{App, AppResult};
-use config::Config;
+use config::{Config, Session};
 use event::EventHandler;
 use request::ProxyInteraction;
 use tui::Tui;
@@ -8,6 +8,7 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
 };
+use layout::LayoutState;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{future::Future, io, net::SocketAddr, pin::Pin};
 use tokio::sync::{
@@ -36,9 +37,21 @@ mod response_waiter;
 /// The config struct to manage options
 mod config;
 
+/// The struct to manage the state of what's shown to the user
+mod layout;
+
+/// To manage the state of the bottom input bar
+mod input_state;
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
     let config = Config::retrieve();
+
+    let session = config
+        .session_file
+        .as_ref()
+        .and_then(|file| Session::restore(file).ok())
+        .unwrap_or_default();
 
     let (proxy_tx, proxy_rx) = unbounded_channel();
     let server = spawn_proxy(proxy_tx, &config).await;
@@ -50,10 +63,12 @@ async fn main() -> AppResult<()> {
     let mut tui = Tui::new(terminal);
     tui.init()?;
 
-    // Create an application.
-    let mut app = App::new(events, server, proxy_rx);
+    let layout = LayoutState::default();
 
-    app.run(&mut tui).await;
+    // Create an application.
+    let mut app = App::new(events, server, proxy_rx, session);
+
+    app.run(tui, layout).await;
     Ok(())
 }
 

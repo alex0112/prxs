@@ -21,6 +21,15 @@ pub struct ResponseWaiter {
     waker: Option<Waker>,
 }
 
+impl std::fmt::Debug for ResponseWaiter {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct("ResponseWaiter")
+            .field("requests_len", &self.requests.len())
+            .field("waker", &self.waker)
+            .finish()
+    }
+}
+
 impl ResponseWaiter {
     pub fn submit(&mut self, fut: ResponseFut) {
         let repoll = self.requests.is_empty();
