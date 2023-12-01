@@ -5,8 +5,8 @@ use ratatui::{
     Frame,
 };
 
-use crate::request::Request;
 use crate::app::App;
+use crate::request::Request;
 
 /// Renders the user interface widgets.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -82,20 +82,20 @@ fn http_request_widget(app: &App) -> Paragraph {
 }
 
 fn format_req(req: &Request) -> String {
-    format!("{:?} {:} {:}\n{:}\n\n{:?}", 
-            req.version(),
-            req.method(),
-            req.uri(),
-            format_headers(req),
-            req.body(),
+    format!(
+        "{:?} {:} {:}\n{:}\n\n{:?}",
+        req.version(),
+        req.method(),
+        req.uri(),
+        format_headers(req),
+        req.body(),
     )
 }
 
 fn format_headers(req: &Request) -> String {
-    req.headers().iter()
-        .map(|(key, val)| {
-            format!("{}: {}", key, val.to_str().unwrap())
-        })
+    req.headers()
+        .iter()
+        .map(|(key, val)| format!("{}: {}", key, val.to_str().unwrap()))
         .collect::<Vec<String>>()
         .join("\n")
 }
