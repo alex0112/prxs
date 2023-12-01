@@ -18,6 +18,12 @@ pub fn render(state: &mut LayoutState, frame: &mut Frame) {
     // See the following resources:
     // - https://docs.rs/ratatui/latest/ratatui/widgets/index.html
     // - https://github.com/ratatui-org/ratatui/tree/master/examples
+    fn req_resp_layout(rect: Rect) -> std::rc::Rc<[Rect]> {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(rect)
+    }
 
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -31,13 +37,6 @@ pub fn render(state: &mut LayoutState, frame: &mut Frame) {
     frame.render_widget(tab_list_widget(state), main_layout[0]);
 
     draw_input_widget(&mut state.input, frame, main_layout[2]);
-
-    fn req_resp_layout(rect: Rect) -> std::rc::Rc<[Rect]> {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(rect)
-    }
 
     if let Some(tab) = state.current_tab() {
         let req_tab_layout = Layout::default()
@@ -102,8 +101,8 @@ fn draw_input_widget(input: &mut InputState, frame: &mut Frame, rect: Rect) {
 
         let before_cursor = graphemes[input.bounds.0..cursor_x]
             .iter()
-            .map(|s| s.width())
-            .sum::<usize>() as u16;
+            .map(|s| s.width() as u16)
+            .sum::<u16>();
 
         frame.set_cursor(rect.x + before_cursor, rect.y + 1);
     }

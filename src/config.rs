@@ -38,8 +38,10 @@ impl Config {
         match config_str {
             None => Config::from(&mut args.config),
             Some(config_str) => toml::from_str::<<Config as ClapSerde>::Opt>(&config_str)
-                .map(|config| Config::from(config).merge(&mut args.config))
-                .unwrap_or_else(|e| panic!("Error in configuration file: {e}")),
+                .map_or_else(
+                    |e| panic!("Error in configuration file: {e}"),
+                    |config| Config::from(config).merge(&mut args.config),
+                ),
         }
     }
 
@@ -52,7 +54,7 @@ impl Config {
     }
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Session {
     pub filter: String,
 }

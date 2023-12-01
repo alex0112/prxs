@@ -1,3 +1,5 @@
+#![allow(clippy::module_name_repetitions)]
+
 use app::{App, AppResult};
 use config::{Config, Session};
 use event::EventHandler;
@@ -54,7 +56,7 @@ async fn main() -> AppResult<()> {
         .unwrap_or_default();
 
     let (proxy_tx, proxy_rx) = unbounded_channel();
-    let server = spawn_proxy(proxy_tx, &config).await;
+    let server = spawn_proxy(proxy_tx, &config);
 
     // Initialize the terminal user interface.
     let backend = CrosstermBackend::new(io::stdout());
@@ -167,7 +169,7 @@ pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 // We're erasing the type here 'cause afaict it's impossible to name the type that results from
 // calling `serve` and also all we really care about is that it's a future which may return a
 // result
-async fn spawn_proxy(
+fn spawn_proxy(
     tui_tx: UnboundedSender<ProxyMessage>,
     config: &Config,
 ) -> Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>> {

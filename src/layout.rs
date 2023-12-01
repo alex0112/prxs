@@ -19,7 +19,7 @@ pub struct LayoutState {
 }
 
 impl LayoutState {
-    /// getter for current_req_idx so we can pass it into a stateful widget
+    /// getter for `current_req_idx` so we can pass it into a stateful widget
     pub fn req_idx_mut(&mut self) -> &mut ListState {
         &mut self.current_req_idx
     }
@@ -64,13 +64,13 @@ impl LayoutState {
         }
     }
 
-    pub async fn handle_req_response(&mut self, resp: RequestResponse) {
+    pub fn handle_req_response(&mut self, resp: RequestResponse) {
         let Some(req) = self.requests.iter_mut().find(|r| r.id == resp.id) else {
             println!("Couldn't find request for id {}", resp.id);
             return;
         };
 
-        req.store_response(resp).await;
+        req.store_response(resp);
     }
 
     /// An internal function for jumping around the list of requests by a certain amount
@@ -83,16 +83,12 @@ impl LayoutState {
             return;
         }
 
-        let selected = self
-            .current_req_idx
-            .selected()
-            .map(|sel| {
-                (sel as isize + amt)
-                    .try_into()
-                    .unwrap_or(0)
-                    .max(self.requests.len() - 1)
-            })
-            .unwrap_or(0);
+        let selected = self.current_req_idx.selected().map_or(0, |sel| {
+            (sel as isize + amt)
+                .try_into()
+                .unwrap_or(0)
+                .max(self.requests.len() - 1)
+        });
 
         self.current_req_idx.select(Some(selected));
     }

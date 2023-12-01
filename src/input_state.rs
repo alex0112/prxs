@@ -1,6 +1,6 @@
 use crossterm::event::KeyCode;
 use ratatui::Frame;
-use std::{fs, path::PathBuf};
+use std::{borrow::ToOwned, fs, path::PathBuf};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -70,7 +70,7 @@ impl InputState {
     }
 
     pub fn handle_escape(&mut self) {
-        self.input = "".to_owned();
+        self.input = String::new();
         self.right_offset = 0;
 
         // once again, makes sure that the input will display nicely when redrawn
@@ -85,9 +85,8 @@ impl InputState {
         let mut graph = self.input.graphemes(true).collect::<Vec<&str>>();
         let len = graph.len();
 
-        let index = len as i32 - self.right_offset as i32 - 1;
-        if index > -1 {
-            graph.remove(index as usize);
+        if len > self.right_offset {
+            graph.remove(len - self.right_offset - 1);
             self.input = graph.join("");
         }
 
@@ -105,7 +104,7 @@ impl InputState {
         }
     }
 
-    pub fn get_typed_file(&self, input: &str) -> String {
+    pub fn get_typed_file(input: &str) -> String {
         // parse the string that is input and get the first partial file they're currently typed
         // out. We have to use special parsing for this so that people can escape spaces with
         // backslashes and quotes
@@ -139,13 +138,6 @@ impl InputState {
     }
 
     pub fn handle_tab_completion(&mut self, start_idx: usize) {
-        // So this is my messy attempt at tab completion. It actually works ok-ish
-        // I think it works on Windows but I can't say for certain
-
-        // this gets a list of the currently input attachments,
-        // with support for escaping spaces with backslashes and quotes
-        let incomplete = self.get_typed_file(&self.input[start_idx..]);
-
         // stole this from text-completions:
         // https://docs.rs/text-completions/latest/src/text_completions/lib.rs.html#65-102
         // technically this doesn't account for the fact that macos file names can have path
@@ -171,23 +163,32 @@ impl InputState {
             let base_name = path.file_name()?.to_str()?;
             let dir = fs::read_dir(parent).ok()?;
 
-            for ent in dir.into_iter() {
+            for ent in dir {
                 let ent = ent.ok()?;
-                let Some(mut name) = ent.file_name().to_str().map(|s| s.to_owned()) else {
+                let file_name = ent.file_name();
+                let Some(name) = file_name.to_str() else {
                     continue;
                 };
-                if ent.path().is_dir() {
-                    name.push('/');
-                }
 
                 if name.starts_with(base_name) {
-                    path.set_file_name(name);
+                    if ent.path().is_dir() {
+                        path.push(name);
+                    } else {
+                        path.set_file_name(name);
+                    }
                     break;
                 }
             }
 
-            path.to_str().map(|s| s.to_owned())
+            path.to_str().map(ToOwned::to_owned)
         }
+
+        // So this is my messy attempt at tab completion. It actually works ok-ish
+        // I think it works on Windows but I can't say for certain
+
+        // this gets a list of the currently input attachments,
+        // with support for escaping spaces with backslashes and quotes
+        let incomplete = Self::get_typed_file(&self.input[start_idx..]);
 
         if let Some(new_input) = completed(&incomplete) {
             self.input = new_input;
@@ -282,7 +283,7 @@ impl InputState {
             // only do something if we've already tabbed up somewhat
             if tab == 0 {
                 // if it's 0, reset the input to nothing.
-                self.input = "".to_owned();
+                self.input = String::new();
                 self.tabbed_up = None;
             } else {
                 // else just go one further down the list

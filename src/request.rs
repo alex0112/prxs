@@ -4,7 +4,7 @@ use std::ops::Deref;
 use tokio::sync::oneshot::{self, channel};
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum RequestInteraction {
     r#Drop,
     Forward,
@@ -30,7 +30,7 @@ pub struct Request {
 
 impl Request {
     #[must_use]
-    pub async fn send_interaction(
+    pub fn send_interaction(
         &mut self,
         interaction: RequestInteraction,
     ) -> Option<oneshot::Receiver<Result<Response<Body>, String>>> {
@@ -53,13 +53,13 @@ impl Request {
                         println!("Couldn't tell proxy to forward request {self:?}");
                         None
                     }
-                    Ok(_) => Some(proxy_rx),
+                    Ok(()) => Some(proxy_rx),
                 }
             }
         }
     }
 
-    pub async fn store_response(&mut self, resp: RequestResponse) {
+    pub fn store_response(&mut self, resp: RequestResponse) {
         self.resp = Some(resp);
     }
 }
