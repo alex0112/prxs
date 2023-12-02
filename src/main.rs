@@ -15,6 +15,8 @@ use tokio::sync::{
     oneshot::{self, channel},
 };
 
+use tls_decrypt::decrypt_tls_layer;
+
 /// Application.
 mod app;
 
@@ -35,6 +37,9 @@ mod response_waiter;
 
 /// The config struct to manage options
 mod config;
+
+/// Module that handles the TLS layer
+mod tls_decrypt;
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -113,9 +118,13 @@ async fn clone_response(resp: Response<Body>) -> (Response<Body>, Response<Body>
 }
 
 async fn handle_proxied_req(
-    req: Request<Body>,
+    mut req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
 ) -> Result<Response<Body>, hyper::Error> {
+    if req.method() == http::Method::CONNECT {
+        req = decrypt_tls_layer(&req).await;
+    }
+
     let (send_req, hold_req) = clone_request(req).await;
 
     let (tui_tx, tui_rx) = channel();
