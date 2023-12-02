@@ -732,6 +732,7 @@ dependencies = [
  "http",
  "hyper",
  "hyper-tls",
+ "native-tls",
  "ratatui",
  "serde",
  "tokio",
