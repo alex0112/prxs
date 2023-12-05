@@ -1,19 +1,19 @@
 use app::{App, AppResult};
 use config::Config;
 use event::EventHandler;
-use request::ProxyInteraction;
-use tui::Tui;
-
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
 };
+use native_tls::TlsAcceptor;
 use ratatui::{backend::CrosstermBackend, Terminal};
+use request::ProxyInteraction;
 use std::{future::Future, io, net::SocketAddr, pin::Pin};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
     oneshot::{self, channel},
 };
+use tui::Tui;
 
 use tls_decrypt::decrypt_tls_layer;
 
@@ -118,45 +118,46 @@ async fn clone_response(resp: Response<Body>) -> (Response<Body>, Response<Body>
 }
 
 async fn handle_proxied_req(
-    mut req: Request<Body>,
+    req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
 ) -> Result<Response<Body>, hyper::Error> {
     if req.method() == http::Method::CONNECT {
-        req = decrypt_tls_layer(&req).await;
-    }
-
-    let (send_req, hold_req) = clone_request(req).await;
-
-    let (tui_tx, tui_rx) = channel();
-
-    tx.send((send_req, tui_tx)).unwrap();
-
-    let interaction = tui_rx.await.unwrap();
-
-    match interaction {
-        ProxyInteraction::Forward(tx) => {
-            let client = Client::new();
-            let resp = client.request(hold_req).await;
-
-            let (send_resp, fw_resp) = match resp {
-                Ok(resp) => {
-                    let (send_resp, fw_resp) = clone_response(resp).await;
-                    (Ok(send_resp), Ok(fw_resp))
+        let decrypted_req = decrypt_tls_layer(&req).await;
+        handle_proxied_req(decrypted_req, tx).await
+    } else {
+        let (send_req, hold_req) = clone_request(req).await;
+        
+        let (tui_tx, tui_rx) = channel();
+        
+        tx.send((send_req, tui_tx)).unwrap();
+        
+        let interaction = tui_rx.await.unwrap();
+        
+        match interaction {
+            ProxyInteraction::Forward(tx) => {
+                let client = Client::new();
+                let resp = client.request(hold_req).await;
+                
+                let (send_resp, fw_resp) = match resp {
+                    Ok(resp) => {
+                        let (send_resp, fw_resp) = clone_response(resp).await;
+                        (Ok(send_resp), Ok(fw_resp))
+                    }
+                Err(else { ; }) => (Err(e.to_string()), Err(e)),
+                };
+                
+                if let Err(e) = tx.send(send_resp) {
+                    println!("Couldn't send response to tui: {e:?}");
                 }
-                Err(e) => (Err(e.to_string()), Err(e)),
-            };
-
-            if let Err(e) = tx.send(send_resp) {
-                println!("Couldn't send response to tui: {e:?}");
+                
+                fw_resp
             }
-
-            fw_resp
+            ProxyInteraction::Drop => Ok(Response::new("".into())),
         }
-        ProxyInteraction::Drop => Ok(Response::new("".into())),
     }
-}
-
-pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
+   }
+    
+    pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 
 // We're erasing the type here 'cause afaict it's impossible to name the type that results from
 // calling `serve` and also all we really care about is that it's a future which may return a
@@ -167,6 +168,8 @@ async fn spawn_proxy(
 ) -> Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
 
+    let tls_acceptor: TlsAcceptor = tls_decrypt::gen_tls_acceptor().await;
+
     let make_svc = make_service_fn(move |_conn| {
         let tui_tx = tui_tx.clone();
         async move {
@@ -176,6 +179,8 @@ async fn spawn_proxy(
             }))
         }
     });
+
+    let https_connector: HttpsConnector::new();
 
     Box::pin(Server::bind(&addr).serve(make_svc))
 }
