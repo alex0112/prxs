@@ -319,7 +319,7 @@ impl InputState {
             ":s" | ":S" => sections.next().map(|s| InputCommand::SaveSession(s.into())),
             ":q" | ":Q" => Some(InputCommand::Quit),
             i if !i.is_empty() => {
-                if i.chars().next() != Some(':') {
+                if !i.starts_with(':') {
                     return None;
                 }
 

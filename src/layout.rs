@@ -87,7 +87,7 @@ impl LayoutState {
             (sel as isize + amt)
                 .try_into()
                 .unwrap_or(0)
-                .max(self.requests.len() - 1)
+                .min(self.requests.len() - 1)
         });
 
         self.current_req_idx.select(Some(selected));

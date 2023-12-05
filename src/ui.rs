@@ -1,8 +1,10 @@
-use crate::request::Request;
 use crate::{
     input_state::InputState,
     layout::{LayoutState, Tab},
+    request::Request,
+    response_waiter::RequestResponse,
 };
+use http::{HeaderMap, HeaderValue};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -149,27 +151,34 @@ fn http_request_widget(req: Option<&Request>) -> Paragraph {
 
 fn format_req(req: &Request) -> String {
     format!(
-        "{:?} {:} {:}\n{:}\n\n{:?}",
+        "{:?} {} {}\n{}\n\n{:?}",
         req.version(),
         req.method(),
         req.uri(),
-        format_headers(req),
+        format_headers(req.headers()),
         req.body(),
     )
 }
 
-fn format_headers(req: &Request) -> String {
-    req.headers()
+fn format_headers(headers: &HeaderMap<HeaderValue>) -> String {
+    headers
         .iter()
         .map(|(key, val)| format!("{}: {}", key, val.to_str().unwrap()))
         .collect::<Vec<String>>()
         .join("\n")
 }
 
+fn format_resp(resp: &RequestResponse) -> String {
+    match resp.response.as_ref() {
+        Err(e) => format!("Couldn't get response: {e}"),
+        Ok(resp) => format!("{:?}\n{}", resp.status(), format_headers(resp.headers())),
+    }
+}
+
 fn http_response_widget(req: Option<&Request>) -> Paragraph {
     let display_text = req
         .and_then(|req| req.resp.as_ref())
-        .map_or_else(String::new, |resp| format!("{:?}", resp.response));
+        .map_or_else(String::new, format_resp);
 
     Paragraph::new(display_text)
         .block(
