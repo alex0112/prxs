@@ -171,7 +171,12 @@ fn format_headers(headers: &HeaderMap<HeaderValue>) -> String {
 fn format_resp(resp: &RequestResponse) -> String {
     match resp.response.as_ref() {
         Err(e) => format!("Couldn't get response: {e}"),
-        Ok(resp) => format!("{:?}\n{}", resp.status(), format_headers(resp.headers())),
+        Ok(resp) => format!(
+            "{:?}\n{}\n\n{:?}",
+            resp.status(),
+            format_headers(resp.headers()),
+            resp.body()
+        ),
     }
 }
 
