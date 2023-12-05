@@ -298,6 +298,7 @@ impl InputState {
 
 pub enum InputCommand {
     SaveSession(String),
+    SelectTab(usize),
     Quit,
 }
 
@@ -317,6 +318,13 @@ impl InputState {
             // to avoid this one that's not really stupid and hacky
             ":s" | ":S" => sections.next().map(|s| InputCommand::SaveSession(s.into())),
             ":q" | ":Q" => Some(InputCommand::Quit),
+            i if !i.is_empty() => {
+                if i.chars().next() != Some(':') {
+                    return None;
+                }
+
+                i[1..].parse::<usize>().map(InputCommand::SelectTab).ok()
+            }
             _ => None,
         }
     }

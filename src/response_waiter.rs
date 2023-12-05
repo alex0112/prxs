@@ -1,3 +1,5 @@
+use crate::ConsumingClone;
+use async_trait::async_trait;
 use futures_core::stream::Stream;
 use hyper::{Body, Response};
 use std::{
@@ -11,6 +13,22 @@ use uuid::Uuid;
 pub struct RequestResponse {
     pub id: Uuid,
     pub response: Result<Response<Body>, String>,
+}
+
+#[async_trait]
+impl ConsumingClone for RequestResponse {
+    async fn clone(self) -> (Self, Self) {
+        let Self { id, response } = self;
+        let (r1, r2) = match response {
+            Err(e) => (Err(e.clone()), Err(e)),
+            Ok(r) => {
+                let (r1, r2) = r.clone().await;
+                (Ok(r1), Ok(r2))
+            }
+        };
+
+        (Self { id, response: r1 }, Self { id, response: r2 })
+    }
 }
 
 type ResponseFut = Pin<Box<dyn Future<Output = RequestResponse>>>;

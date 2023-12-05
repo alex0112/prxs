@@ -104,12 +104,37 @@ impl LayoutState {
         self.mod_req_idx_by(-1);
     }
 
+    /// Get a list of the currently-viewable tabs
     pub fn tabs(&self) -> &[Tab] {
         &self.tabs
     }
 
+    /// Get a reference to the current tab, if one is currently selected that is not the main tab
     pub fn current_tab(&self) -> Option<&Tab> {
         self.current_tab_idx.and_then(|idx| self.tabs.get(idx))
+    }
+
+    /// Push the currently selected request into a new tab at the end of the tab list
+    pub async fn separate_current_req(&mut self) {
+        // So we have to remove it first so that we can own it to clone it 'cause that's the
+        // stupid workaround we have to deal with
+        if let Some(req_idx) = self.current_req_idx.selected() {
+            let req = self.requests.remove(req_idx);
+            let (store, separate) = req.get_tab_copy().await;
+            self.requests.insert(req_idx, store);
+
+            self.tabs.push(Tab {
+                req: separate,
+                notes: String::new(),
+                name: None,
+            });
+        }
+    }
+
+    pub fn select_tab(&mut self, idx: usize) {
+        if idx < self.tabs.len() {
+            self.current_tab_idx = Some(idx);
+        }
     }
 }
 

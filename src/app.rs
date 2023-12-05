@@ -65,7 +65,7 @@ impl App {
             // this will just keep going until you kill the app, basically
             select! {
                 ev = self.event_handler.next() => {
-                    self.handle_event(ev, &mut tui, &mut layout);
+                    self.handle_event(ev, &mut tui, &mut layout).await;
                 }
                 res = &mut self.proxy_server => {
                     println!("Got err from server: {res:?}");
@@ -85,7 +85,12 @@ impl App {
         }
     }
 
-    fn handle_event(&mut self, event: io::Result<Event>, tui: &mut Tui, layout: &mut LayoutState) {
+    async fn handle_event(
+        &mut self,
+        event: io::Result<Event>,
+        tui: &mut Tui,
+        layout: &mut LayoutState,
+    ) {
         let ev = match event {
             Ok(ev) => ev,
             Err(e) => {
@@ -97,7 +102,7 @@ impl App {
         if let Event::Key(key) = ev {
             if layout.input.selected {
                 if let Some(cmd) = layout.input.route_keycode(key.code) {
-                    self.handle_input_command(cmd, tui);
+                    self.handle_input_command(cmd, tui, layout);
                 }
                 return;
             }
@@ -135,16 +140,18 @@ impl App {
                         layout.input.route_keycode(key.code);
                     }
                 }
+                KeyCode::Char('s' | 'S') => layout.separate_current_req().await,
                 _ => {}
             }
         }
     }
 
-    fn handle_input_command(&mut self, cmd: InputCommand, tui: &mut Tui) {
+    fn handle_input_command(&mut self, cmd: InputCommand, tui: &mut Tui, state: &mut LayoutState) {
         match cmd {
             // TODO: Handle errors here
             InputCommand::SaveSession(path) => self.session.save(path).unwrap(),
             InputCommand::Quit => Self::quit(tui, 0),
+            InputCommand::SelectTab(idx) => state.select_tab(idx),
         }
     }
 }

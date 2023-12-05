@@ -1,6 +1,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 use app::{App, AppResult};
+use async_trait::async_trait;
 use config::{Config, Session};
 use event::EventHandler;
 use request::ProxyInteraction;
@@ -74,66 +75,11 @@ async fn main() -> AppResult<()> {
     Ok(())
 }
 
-async fn clone_request(req: Request<Body>) -> (Request<Body>, Request<Body>) {
-    fn build_builder(req: &Request<Body>) -> http::request::Builder {
-        let mut builder = Request::builder()
-            .uri(req.uri())
-            .method(req.method())
-            .version(req.version());
-
-        for (name, value) in req.headers() {
-            builder = builder.header(name, value);
-        }
-
-        builder
-    }
-
-    let first = build_builder(&req);
-    let second = build_builder(&req);
-
-    // TODO: Refuse to process a request if it's too large 'cause it could give us an OOM or
-    // something with this function
-    let body_data = hyper::body::to_bytes(req)
-        .await
-        .expect("This req was already constructed by hyper so it's trustworthy");
-
-    (
-        first.body(body_data.clone().into()).unwrap(),
-        second.body(body_data.into()).unwrap(),
-    )
-}
-
-async fn clone_response(resp: Response<Body>) -> (Response<Body>, Response<Body>) {
-    fn build_builder(resp: &Response<Body>) -> http::response::Builder {
-        let mut builder = Response::builder()
-            .status(resp.status())
-            .version(resp.version());
-
-        for (name, value) in resp.headers() {
-            builder = builder.header(name, value);
-        }
-
-        builder
-    }
-
-    let first = build_builder(&resp);
-    let second = build_builder(&resp);
-
-    let body_data = hyper::body::to_bytes(resp)
-        .await
-        .expect("This resp was already constructed by hyper so it's trustworthy");
-
-    (
-        first.body(body_data.clone().into()).unwrap(),
-        second.body(body_data.into()).unwrap(),
-    )
-}
-
 async fn handle_proxied_req(
     req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
 ) -> Result<Response<Body>, hyper::Error> {
-    let (send_req, hold_req) = clone_request(req).await;
+    let (send_req, hold_req) = req.clone().await;
 
     let (tui_tx, tui_rx) = channel();
 
@@ -148,7 +94,7 @@ async fn handle_proxied_req(
 
             let (send_resp, fw_resp) = match resp {
                 Ok(resp) => {
-                    let (send_resp, fw_resp) = clone_response(resp).await;
+                    let (send_resp, fw_resp) = resp.clone().await;
                     (Ok(send_resp), Ok(fw_resp))
                 }
                 Err(e) => (Err(e.to_string()), Err(e)),
@@ -186,4 +132,89 @@ fn spawn_proxy(
     });
 
     Box::pin(Server::bind(&addr).serve(make_svc))
+}
+
+#[async_trait]
+trait ConsumingClone
+where
+    Self: Sized,
+{
+    async fn clone(self) -> (Self, Self);
+}
+
+#[async_trait]
+impl ConsumingClone for Request<Body> {
+    async fn clone(self) -> (Self, Self) {
+        fn build_builder(req: &Request<Body>) -> http::request::Builder {
+            let mut builder = Request::builder()
+                .uri(req.uri())
+                .method(req.method())
+                .version(req.version());
+
+            for (name, value) in req.headers() {
+                builder = builder.header(name, value);
+            }
+
+            builder
+        }
+
+        let first = build_builder(&self);
+        let second = build_builder(&self);
+
+        // TODO: Refuse to process a request if it's too large 'cause it could give us an OOM or
+        // something with this function
+        // also should we use async_trait for this? Honestly I don't want to pull it in as a
+        // dependency and kinda just wanna wait until afit and rtitit are stabilized
+        // in a few weeks
+        let body_data = hyper::body::to_bytes(self)
+            .await
+            .expect("This req was already constructed by hyper so it's trustworthy");
+
+        (
+            first.body(body_data.clone().into()).unwrap(),
+            second.body(body_data.into()).unwrap(),
+        )
+    }
+}
+
+#[async_trait]
+impl ConsumingClone for Response<Body> {
+    async fn clone(self) -> (Self, Self) {
+        fn build_builder(resp: &Response<Body>) -> http::response::Builder {
+            let mut builder = Response::builder()
+                .status(resp.status())
+                .version(resp.version());
+
+            for (name, value) in resp.headers() {
+                builder = builder.header(name, value);
+            }
+
+            builder
+        }
+
+        let first = build_builder(&self);
+        let second = build_builder(&self);
+
+        let body_data = hyper::body::to_bytes(self)
+            .await
+            .expect("This resp was already constructed by hyper so it's trustworthy");
+
+        (
+            first.body(body_data.clone().into()).unwrap(),
+            second.body(body_data.into()).unwrap(),
+        )
+    }
+}
+
+#[async_trait]
+impl<T: ConsumingClone + Send> ConsumingClone for Option<T> {
+    async fn clone(self) -> (Self, Self) {
+        match self {
+            None => (None, None),
+            Some(inner) => {
+                let (inner1, inner2) = inner.clone().await;
+                (Some(inner1), Some(inner2))
+            }
+        }
+    }
 }

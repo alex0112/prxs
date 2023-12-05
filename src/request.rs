@@ -1,4 +1,4 @@
-use crate::response_waiter::RequestResponse;
+use crate::{response_waiter::RequestResponse, ConsumingClone};
 use hyper::{Body, Response};
 use std::ops::Deref;
 use tokio::sync::oneshot::{self, channel};
@@ -61,6 +61,32 @@ impl Request {
 
     pub fn store_response(&mut self, resp: RequestResponse) {
         self.resp = Some(resp);
+    }
+
+    pub async fn get_tab_copy(self) -> (Self, Self) {
+        let Request {
+            id,
+            interaction_tx,
+            inner,
+            resp,
+        } = self;
+        let (inner1, inner2) = inner.clone().await;
+        let (resp1, resp2) = resp.clone().await;
+
+        (
+            Self {
+                id,
+                interaction_tx,
+                inner: inner1,
+                resp: resp1,
+            },
+            Self {
+                id,
+                interaction_tx: None,
+                inner: inner2,
+                resp: resp2,
+            },
+        )
     }
 }
 
