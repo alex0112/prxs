@@ -299,6 +299,7 @@ impl InputState {
 pub enum InputCommand {
     SaveSession(String),
     SelectTab(usize),
+    GunzipCurrent,
     Quit,
 }
 
@@ -319,6 +320,7 @@ impl InputState {
             // to avoid this one that's not really stupid and hacky
             ":s" | ":S" => sections.next().map(|s| InputCommand::SaveSession(s.into())),
             ":q" | ":Q" => Some(InputCommand::Quit),
+            ":gz" => Some(InputCommand::GunzipCurrent),
             i if !i.is_empty() => {
                 if !i.starts_with(':') {
                     return None;

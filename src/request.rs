@@ -1,4 +1,4 @@
-use crate::{response_waiter::RequestResponse, ConsumingClone};
+use crate::{config::Config, response_waiter::RequestResponse, ConsumingClone};
 use hyper::{Body, Response};
 use std::ops::Deref;
 use tokio::sync::oneshot::{self, channel};
@@ -59,7 +59,13 @@ impl Request {
         }
     }
 
-    pub fn store_response(&mut self, resp: RequestResponse) {
+    pub fn store_response(&mut self, mut resp: RequestResponse) {
+        if Config::get().auto_gunzip {
+            if let Ok(ref mut resp) = resp.response {
+                resp.try_gunzip();
+            }
+        }
+
         self.resp = Some(resp);
     }
 

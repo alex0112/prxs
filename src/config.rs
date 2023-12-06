@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::read_to_string,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 #[derive(ClapSerde, Parser)]
@@ -24,25 +25,36 @@ pub struct Config {
 
     #[arg(long = "session", short, help = "The session file to open")]
     pub session_file: Option<PathBuf>,
+
+    #[default(true)]
+    #[arg(
+        long = "auto-gunzip",
+        help = "Whether to automatically gunzip request responses"
+    )]
+    pub auto_gunzip: bool,
 }
 
 impl Config {
-    pub fn retrieve() -> Self {
-        let mut args = Args::parse();
+    pub fn get() -> &'static Self {
+        static CONFIG: OnceLock<Config> = OnceLock::new();
 
-        let config_str = args
-            .config_path
-            .or_else(Config::default_path)
-            .and_then(|path| read_to_string(path).ok());
+        CONFIG.get_or_init(|| {
+            let mut args = Args::parse();
 
-        match config_str {
-            None => Config::from(&mut args.config),
-            Some(config_str) => toml::from_str::<<Config as ClapSerde>::Opt>(&config_str)
-                .map_or_else(
-                    |e| panic!("Error in configuration file: {e}"),
-                    |config| Config::from(config).merge(&mut args.config),
-                ),
-        }
+            let config_str = args
+                .config_path
+                .or_else(Config::default_path)
+                .and_then(|path| read_to_string(path).ok());
+
+            match config_str {
+                None => Config::from(&mut args.config),
+                Some(config_str) => toml::from_str::<<Config as ClapSerde>::Opt>(&config_str)
+                    .map_or_else(
+                        |e| panic!("Error in configuration file: {e}"),
+                        |config| Config::from(config).merge(&mut args.config),
+                    ),
+            }
+        })
     }
 
     pub fn default_path() -> Option<PathBuf> {

@@ -7,13 +7,19 @@ use event::EventHandler;
 use request::ProxyInteraction;
 use tui::Tui;
 
+use flate2::read::GzDecoder;
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
 };
 use layout::LayoutState;
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{future::Future, io, net::SocketAddr, pin::Pin};
+use std::{
+    future::Future,
+    io::{stdout, Read},
+    net::SocketAddr,
+    pin::Pin,
+};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
     oneshot::{self, channel},
@@ -48,7 +54,7 @@ mod input_state;
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
-    let config = Config::retrieve();
+    let config = Config::get();
 
     let session = config
         .session_file
@@ -57,10 +63,10 @@ async fn main() -> AppResult<()> {
         .unwrap_or_default();
 
     let (proxy_tx, proxy_rx) = unbounded_channel();
-    let server = spawn_proxy(proxy_tx, &config);
+    let server = spawn_proxy(proxy_tx);
 
     // Initialize the terminal user interface.
-    let backend = CrosstermBackend::new(io::stdout());
+    let backend = CrosstermBackend::new(stdout());
     let terminal = Terminal::new(backend)?;
     let events = EventHandler::new();
     let mut tui = Tui::new(terminal);
@@ -117,9 +123,8 @@ pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 // result
 fn spawn_proxy(
     tui_tx: UnboundedSender<ProxyMessage>,
-    config: &Config,
 ) -> Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], Config::get().port));
 
     let make_svc = make_service_fn(move |_conn| {
         let tui_tx = tui_tx.clone();
@@ -217,4 +222,11 @@ impl<T: ConsumingClone + Send> ConsumingClone for Option<T> {
             }
         }
     }
+}
+
+fn gunzip(data: impl AsRef<[u8]>) -> std::io::Result<Vec<u8>> {
+    let mut decoder = GzDecoder::new(data.as_ref());
+    let mut v = Vec::new();
+    decoder.read_to_end(&mut v)?;
+    Ok(v)
 }

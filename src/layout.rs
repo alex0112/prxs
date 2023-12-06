@@ -92,16 +92,24 @@ impl LayoutState {
     /// Get the current request, if any. This should return Some if requests is non-empty, but I
     /// guess we can't guarantee. But it will return None if none have come in
     pub fn current_req(&self) -> Option<&Request> {
-        self.current_req_idx
-            .selected()
-            .and_then(|idx| self.requests.get(idx))
+        match self.current_pane {
+            Pane::Tab { idx, .. } => self.tabs.get(idx).map(|t| &t.req),
+            Pane::Main { .. } => self
+                .current_req_idx
+                .selected()
+                .and_then(|idx| self.requests.get(idx)),
+        }
     }
 
     /// Same, just if you want to do something to it
     pub fn current_req_mut(&mut self) -> Option<&mut Request> {
-        self.current_req_idx
-            .selected()
-            .and_then(|idx| self.requests.get_mut(idx))
+        match self.current_pane {
+            Pane::Tab { idx, .. } => self.tabs.get_mut(idx).map(|t| &mut t.req),
+            Pane::Main { .. } => self
+                .current_req_idx
+                .selected()
+                .and_then(|idx| self.requests.get_mut(idx)),
+        }
     }
 
     /// Append a request to the list of currently stored requests and select it if it's now the
@@ -212,6 +220,17 @@ impl LayoutState {
     /// Get the current pane
     pub fn current_pane(&self) -> &Pane {
         &self.current_pane
+    }
+
+    /// Try to gunzip the response on the current pane
+    pub fn try_gunzip_current(&mut self) {
+        if let Some(resp) = self
+            .current_req_mut()
+            .and_then(|r| r.resp.as_mut())
+            .and_then(|r| r.response.as_mut().ok())
+        {
+            resp.try_gunzip();
+        }
     }
 }
 

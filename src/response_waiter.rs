@@ -39,6 +39,12 @@ impl CopyableResponse {
             headers: parts.headers,
         }
     }
+
+    pub fn try_gunzip(&mut self) {
+        if let Ok(res) = crate::gunzip(&self.body) {
+            self.body = res.into();
+        }
+    }
 }
 
 type ResponseFut = Pin<Box<dyn Future<Output = RequestResponse>>>;
