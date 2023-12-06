@@ -1,6 +1,6 @@
 use crate::{
     input_state::InputState,
-    layout::{LayoutState, Tab},
+    layout::{LayoutState, MainPane, Pane, Tab, TabPane},
     request::Request,
     response_waiter::RequestResponse,
 };
@@ -8,11 +8,20 @@ use http::{HeaderMap, HeaderValue};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph},
+    widgets::{
+        block::{Position, Title},
+        Block, BorderType, Borders, List, ListItem, Paragraph,
+    },
     Frame,
 };
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+// it would be nice to make this a static but alas
+#[inline]
+fn sel_style() -> Style {
+    Style::default().fg(Color::Cyan)
+}
 
 /// Renders the user interface widgets.
 pub fn render(state: &mut LayoutState, frame: &mut Frame) {
@@ -40,18 +49,26 @@ pub fn render(state: &mut LayoutState, frame: &mut Frame) {
 
     draw_input_widget(&mut state.input, frame, main_layout[2]);
 
+    let pane = state.current_pane();
+
     if let Some(tab) = state.current_tab() {
         let req_tab_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(main_layout[1]);
 
-        frame.render_widget(tab_notes_widget(tab), req_tab_layout[0]);
+        frame.render_widget(tab_notes_widget(tab, pane), req_tab_layout[0]);
 
         let req_resp_layout = req_resp_layout(req_tab_layout[1]);
 
-        frame.render_widget(http_request_widget(Some(&tab.req)), req_resp_layout[0]);
-        frame.render_widget(http_response_widget(Some(&tab.req)), req_resp_layout[1]);
+        frame.render_widget(
+            http_request_widget(Some(&tab.req), pane),
+            req_resp_layout[0],
+        );
+        frame.render_widget(
+            http_response_widget(Some(&tab.req), pane),
+            req_resp_layout[1],
+        );
     } else {
         let main_tab_layout = Layout::default()
             .direction(Direction::Horizontal)
@@ -60,14 +77,17 @@ pub fn render(state: &mut LayoutState, frame: &mut Frame) {
 
         let req_resp_layout = req_resp_layout(main_tab_layout[1]);
 
-        let list = http_request_list_widget(state);
-        frame.render_stateful_widget(list, main_tab_layout[0], state.req_idx_mut());
-
-        frame.render_widget(http_request_widget(state.current_req()), req_resp_layout[0]);
         frame.render_widget(
-            http_response_widget(state.current_req()),
+            http_request_widget(state.current_req(), pane),
+            req_resp_layout[0],
+        );
+        frame.render_widget(
+            http_response_widget(state.current_req(), pane),
             req_resp_layout[1],
         );
+
+        let list = http_request_list_widget(state);
+        frame.render_stateful_widget(list, main_tab_layout[0], state.req_idx_mut());
     }
 }
 
@@ -118,14 +138,28 @@ fn http_request_list_widget<'l>(state: &LayoutState) -> List<'l> {
         .map(ListItem::new)
         .collect();
 
+    let mut block = Block::default()
+        .title("Requests List")
+        .borders(Borders::ALL)
+        .title(
+            Title::from("a")
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+        );
+
+    if matches!(
+        state.current_pane(),
+        Pane::Main {
+            pane: MainPane::ReqList,
+            ..
+        }
+    ) {
+        block = block.border_style(sel_style());
+    }
+
     List::new(items)
-        .block(
-            Block::default()
-                .title("Requests List")
-                .borders(Borders::ALL)
-                .title_alignment(Alignment::Left),
-        )
-        .style(Style::default().fg(Color::White))
+        .block(block)
+        // .style(Style::default().fg(Color::White))
         .highlight_style(
             Style::default()
                 .bg(Color::Cyan)
@@ -134,19 +168,43 @@ fn http_request_list_widget<'l>(state: &LayoutState) -> List<'l> {
         .highlight_symbol("* ")
 }
 
-fn http_request_widget(req: Option<&Request>) -> Paragraph {
+fn http_request_widget<'p>(req: Option<&Request>, selected: &Pane) -> Paragraph<'p> {
     let display_text = req.map(format_req).unwrap_or_default();
 
-    Paragraph::new(display_text)
-        .block(
-            Block::default()
-                .title("Request")
-                .title_alignment(Alignment::Left)
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        )
-        .style(Style::default())
-        .alignment(Alignment::Left)
+    let mut block = Block::default()
+        .title("Request")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(
+            Title::from("w")
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+        );
+
+    let scroll = match selected {
+        Pane::Main {
+            pane: MainPane::Req,
+            scroll,
+        }
+        | Pane::Tab {
+            pane: TabPane::Req,
+            scroll,
+            ..
+        } => Some(scroll),
+        _ => None,
+    };
+
+    if scroll.is_some() {
+        block = block.border_style(sel_style());
+    }
+
+    let mut para = Paragraph::new(display_text).block(block);
+
+    if let Some(s) = scroll {
+        para = para.scroll((*s as u16, 0));
+    }
+
+    para
 }
 
 fn format_req(req: &Request) -> String {
@@ -171,29 +229,61 @@ fn format_headers(headers: &HeaderMap<HeaderValue>) -> String {
 fn format_resp(resp: &RequestResponse) -> String {
     match resp.response.as_ref() {
         Err(e) => format!("Couldn't get response: {e}"),
-        Ok(resp) => format!(
-            "{:?}\n{}\n\n{:?}",
-            resp.status(),
-            format_headers(resp.headers()),
-            resp.body()
-        ),
+        Ok(resp) => {
+            let body = &resp.body;
+            // we have to call this outside of the `unwrap_or` so that we don't reference a
+            // temporary :(
+            let dbg_body = format!("{body:?}");
+            format!(
+                "{:?}\n{}\n\n{}",
+                resp.status,
+                format_headers(&resp.headers),
+                // if it can be a string, that's nice
+                std::str::from_utf8(body).unwrap_or(dbg_body.as_str())
+            )
+        }
     }
 }
 
-fn http_response_widget(req: Option<&Request>) -> Paragraph {
+fn http_response_widget<'p>(req: Option<&Request>, selected: &Pane) -> Paragraph<'p> {
     let display_text = req
         .and_then(|req| req.resp.as_ref())
         .map_or_else(String::new, format_resp);
 
-    Paragraph::new(display_text)
-        .block(
-            Block::default()
-                .title("Response")
-                .title_alignment(Alignment::Left)
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        )
-        .alignment(Alignment::Left)
+    let mut block = Block::default()
+        .title("Response")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(
+            Title::from("s")
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+        );
+
+    let scroll = match selected {
+        Pane::Main {
+            pane: MainPane::Resp,
+            scroll,
+        }
+        | Pane::Tab {
+            pane: TabPane::Resp,
+            scroll,
+            ..
+        } => Some(scroll),
+        _ => None,
+    };
+
+    if scroll.is_some() {
+        block = block.border_style(sel_style());
+    }
+
+    let mut para = Paragraph::new(display_text).block(block);
+
+    if let Some(s) = scroll {
+        para = para.scroll((*s as u16, 0));
+    }
+
+    para
 }
 
 fn tab_list_widget(state: &LayoutState) -> Paragraph {
@@ -223,14 +313,21 @@ fn tab_list_widget(state: &LayoutState) -> Paragraph {
         .alignment(Alignment::Left)
 }
 
-fn tab_notes_widget(tab: &Tab) -> Paragraph {
-    Paragraph::new(tab.notes.as_str())
-        .block(
-            Block::default()
-                .title("Notes")
-                .title_alignment(Alignment::Left)
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        )
-        .alignment(Alignment::Left)
+fn tab_notes_widget<'t>(tab: &'t Tab, selected: &Pane) -> Paragraph<'t> {
+    let mut block = Block::default()
+        .title("Notes")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded);
+
+    if matches!(
+        selected,
+        Pane::Tab {
+            pane: TabPane::Notes,
+            ..
+        }
+    ) {
+        block = block.border_style(sel_style());
+    }
+
+    Paragraph::new(tab.notes.as_str()).block(block)
 }

@@ -2,9 +2,9 @@ use crate::{
     config::Session,
     event::EventHandler,
     input_state::InputCommand,
-    layout::LayoutState,
+    layout::{LayoutState, PaneSelector},
     request::RequestInteraction,
-    response_waiter::{RequestResponse, ResponseWaiter},
+    response_waiter::{CopyableResponse, RequestResponse, ResponseWaiter},
     tui::Tui,
     ProxyMessage,
 };
@@ -112,18 +112,22 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('q') => Self::quit(tui, 0),
                 KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => Self::quit(tui, 0),
                 // go down the list of requests
-                KeyCode::Down | KeyCode::Char('j') => layout.next_req(),
+                KeyCode::Down | KeyCode::Char('j') => layout.scroll_down(),
                 // go up the list of requests
-                KeyCode::Up | KeyCode::Char('k') => layout.prev_req(),
+                KeyCode::Up | KeyCode::Char('k') => layout.scroll_up(),
                 // forward the currently-selected request
                 KeyCode::Char('f' | 'F') => {
                     if let Some(req) = layout.current_req_mut() {
                         if let Some(rx) = req.send_interaction(RequestInteraction::Forward) {
                             let id = req.id;
                             self.response_waiter.submit(Box::pin(async move {
-                                let response = rx
+                                let response = match rx
                                     .await
-                                    .expect("uhhh I don't know how to handle a None here");
+                                    .expect("uhhh I don't know how to handle a None here")
+                                {
+                                    Ok(resp) => Ok(CopyableResponse::from_resp(resp).await),
+                                    Err(e) => Err(e),
+                                };
 
                                 RequestResponse { id, response }
                             }));
@@ -144,9 +148,11 @@ impl App {
                         layout.input.route_keycode(key.code);
                     }
                 }
-                KeyCode::Char('m' | 'M') => layout.select_tab(None),
+                KeyCode::Char(c @ 'm' | c @ 'w' | c @ 'a' | c @ 's') => {
+                    layout.select_pane_with_input(PaneSelector::Key(c))
+                }
                 // send the currently-selected request to a new tab
-                KeyCode::Char('s' | 'S') => layout.separate_current_req().await,
+                KeyCode::Char('p' | 'P') => layout.separate_current_req().await,
                 _ => {}
             }
         }
@@ -157,7 +163,7 @@ impl App {
             // TODO: Handle errors here
             InputCommand::SaveSession(path) => self.session.save(path).unwrap(),
             InputCommand::Quit => Self::quit(tui, 0),
-            InputCommand::SelectTab(idx) => state.select_tab(Some(idx)),
+            InputCommand::SelectTab(idx) => state.select_pane_with_input(PaneSelector::Idx(idx)),
         }
     }
 }

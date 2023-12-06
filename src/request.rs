@@ -71,20 +71,20 @@ impl Request {
             resp,
         } = self;
         let (inner1, inner2) = inner.clone().await;
-        let (resp1, resp2) = resp.clone().await;
+        let resp_clone = resp.clone();
 
         (
             Self {
                 id,
                 interaction_tx,
                 inner: inner1,
-                resp: resp1,
+                resp,
             },
             Self {
                 id,
                 interaction_tx: None,
                 inner: inner2,
-                resp: resp2,
+                resp: resp_clone,
             },
         )
     }

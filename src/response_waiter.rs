@@ -1,7 +1,6 @@
-use crate::ConsumingClone;
-use async_trait::async_trait;
 use futures_core::stream::Stream;
-use hyper::{Body, Response};
+use http::{HeaderMap, HeaderValue, StatusCode, Version};
+use hyper::{body::Bytes, Body, Response};
 use std::{
     future::Future,
     pin::Pin,
@@ -9,25 +8,36 @@ use std::{
 };
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequestResponse {
     pub id: Uuid,
-    pub response: Result<Response<Body>, String>,
+    pub response: Result<CopyableResponse, String>,
 }
 
-#[async_trait]
-impl ConsumingClone for RequestResponse {
-    async fn clone(self) -> (Self, Self) {
-        let Self { id, response } = self;
-        let (r1, r2) = match response {
-            Err(e) => (Err(e.clone()), Err(e)),
-            Ok(r) => {
-                let (r1, r2) = r.clone().await;
-                (Ok(r1), Ok(r2))
-            }
-        };
+// We do this because we want to be able to display the `Bytes` of the body in the way we want.
+// We can't do that if we just use `hyper::Response::Body` because you have to consume it to get
+// the whole underlying bytes, which we can't do every time we want to display this
+#[derive(Clone, Debug)]
+pub struct CopyableResponse {
+    pub body: Bytes,
+    pub status: StatusCode,
+    pub version: Version,
+    pub headers: HeaderMap<HeaderValue>,
+}
 
-        (Self { id, response: r1 }, Self { id, response: r2 })
+impl CopyableResponse {
+    pub async fn from_resp(resp: Response<Body>) -> Self {
+        let (parts, body) = resp.into_parts();
+        let bytes = hyper::body::to_bytes(body)
+            .await
+            .expect("This body was created by hyper so it's trustworty");
+
+        Self {
+            body: bytes,
+            status: parts.status,
+            version: parts.version,
+            headers: parts.headers,
+        }
     }
 }
 

@@ -6,6 +6,63 @@ use ratatui::widgets::ListState;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+pub enum MainPane {
+    ReqList,
+    Req,
+    Resp,
+}
+
+impl TryFrom<char> for MainPane {
+    type Error = ();
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        match c {
+            'a' => Ok(MainPane::ReqList),
+            'w' => Ok(MainPane::Req),
+            's' => Ok(MainPane::Resp),
+            _ => Err(()),
+        }
+    }
+}
+
+pub enum TabPane {
+    Notes,
+    Req,
+    Resp,
+}
+
+impl TryFrom<char> for TabPane {
+    type Error = ();
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        match c {
+            'a' => Ok(TabPane::Notes),
+            'w' => Ok(TabPane::Req),
+            's' => Ok(TabPane::Resp),
+            _ => Err(()),
+        }
+    }
+}
+
+pub enum Pane {
+    Main {
+        scroll: usize,
+        pane: MainPane,
+    },
+    Tab {
+        idx: usize,
+        scroll: usize,
+        pane: TabPane,
+    },
+}
+
+impl Default for Pane {
+    fn default() -> Self {
+        Pane::Main {
+            scroll: 0,
+            pane: MainPane::ReqList,
+        }
+    }
+}
+
 /// Records what the current state of the UI is, e.g. what tab the user is currently viewing,
 /// what request is assigned to each tab, etc.
 #[derive(Default)]
@@ -13,9 +70,12 @@ pub struct LayoutState {
     requests: Vec<Request>,
     current_req_idx: ListState,
     tabs: Vec<Tab>,
-    // None for selected indicates Main tab, otherwise 0-indexed in `tabs`
-    current_tab_idx: Option<usize>,
     pub input: InputState,
+    // We could use an enum for what pane is selected, but then we'd either have to have it be the
+    // same regardless of what type of tab we're viewing or make sure it's always in sync with
+    // what type of tab we're selecting, which seems like a hassle, so let's just use a usize and
+    // have each type of view interpret that as works for them
+    current_pane: Pane,
 }
 
 impl LayoutState {
@@ -79,28 +139,38 @@ impl LayoutState {
     /// it's not, it just selects req 0 or requests.len() - 1, whichever is closer to the
     /// expected one.
     fn mod_req_idx_by(&mut self, amt: isize) {
-        if self.requests.is_empty() {
-            return;
+        match self.current_pane {
+            Pane::Main {
+                pane: MainPane::ReqList,
+                ..
+            } => {
+                if self.requests.is_empty() {
+                    return;
+                }
+
+                let selected = self.current_req_idx.selected().map_or(0, |sel| {
+                    (sel as isize + amt)
+                        .try_into()
+                        .unwrap_or(0)
+                        .min(self.requests.len() - 1)
+                });
+
+                self.current_req_idx.select(Some(selected));
+            }
+            Pane::Main { ref mut scroll, .. } | Pane::Tab { ref mut scroll, .. } => {
+                *scroll = (*scroll as isize + amt).try_into().unwrap_or(0);
+            }
         }
-
-        let selected = self.current_req_idx.selected().map_or(0, |sel| {
-            (sel as isize + amt)
-                .try_into()
-                .unwrap_or(0)
-                .min(self.requests.len() - 1)
-        });
-
-        self.current_req_idx.select(Some(selected));
     }
 
     /// Select the next request in the list, if it can. Otherwise, do what `mod_req_idx_by` says
-    pub fn next_req(&mut self) {
+    pub fn scroll_down(&mut self) {
         self.mod_req_idx_by(1);
     }
 
     /// Select the previous request in the list, if it can. Otherwise, do what `mod_req_idx_by`
     /// says
-    pub fn prev_req(&mut self) {
+    pub fn scroll_up(&mut self) {
         self.mod_req_idx_by(-1);
     }
 
@@ -111,12 +181,15 @@ impl LayoutState {
 
     /// Get a reference to the current tab, if one is currently selected that is not the main tab
     pub fn current_tab(&self) -> Option<&Tab> {
-        self.current_tab_idx.and_then(|idx| self.tabs.get(idx))
+        self.current_tab_idx().and_then(|idx| self.tabs.get(idx))
     }
 
     /// Get the current tab idx
     pub fn current_tab_idx(&self) -> Option<usize> {
-        self.current_tab_idx
+        match self.current_pane {
+            Pane::Tab { idx, .. } => Some(idx),
+            _ => None,
+        }
     }
 
     /// Push the currently selected request into a new tab at the end of the tab list
@@ -136,8 +209,54 @@ impl LayoutState {
         }
     }
 
-    pub fn select_tab(&mut self, idx: Option<usize>) {
-        self.current_tab_idx = idx.and_then(|i| (i < self.tabs.len()).then_some(i))
+    /// Get the current pane
+    pub fn current_pane(&self) -> &Pane {
+        &self.current_pane
+    }
+}
+
+pub enum PaneSelector {
+    Idx(usize),
+    Key(char),
+}
+
+impl LayoutState {
+    /// Parse input text and use it to select a pane and/or tab
+    pub fn select_pane_with_input(&mut self, input: PaneSelector) {
+        // hmmm this would be better if we only tried to parse once we've verified that it doesn't
+        // fit the other options but oh well, whatever
+        match input {
+            PaneSelector::Idx(i) => {
+                self.current_pane = Pane::Tab {
+                    idx: i.min(self.requests.len() - 1),
+                    scroll: 0,
+                    pane: TabPane::Notes,
+                }
+            }
+            // use 'm' to select the main pane
+            PaneSelector::Key('m') => {
+                self.current_pane = Pane::Main {
+                    scroll: 0,
+                    pane: MainPane::ReqList,
+                }
+            }
+            PaneSelector::Key(key) => match self.current_pane {
+                Pane::Tab { idx, .. } => {
+                    if let Ok(pane) = key.try_into() {
+                        self.current_pane = Pane::Tab {
+                            idx,
+                            scroll: 0,
+                            pane,
+                        };
+                    }
+                }
+                Pane::Main { .. } => {
+                    if let Ok(pane) = key.try_into() {
+                        self.current_pane = Pane::Main { scroll: 0, pane };
+                    }
+                }
+            },
+        }
     }
 }
 
