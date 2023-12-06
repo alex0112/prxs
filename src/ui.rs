@@ -200,14 +200,20 @@ fn tab_list_widget(state: &LayoutState) -> Paragraph {
     let current_tab = state.current_tab();
     let tabs = state.tabs();
     let list_text = format!(
-        "{}Main |{}",
-        if current_tab.is_none() { " * " } else { "   " },
+        " {}Main |{}",
+        if current_tab.is_none() { "* " } else { "" },
         tabs.iter()
             .enumerate()
-            .map(|(idx, tab)| if let Some(ref name) = tab.name {
-                format!(" {name} |")
-            } else {
-                format!(" Request {idx} |")
+            .map(|(idx, tab)| {
+                let mut name = if let Some(ref name) = tab.name {
+                    format!(" {name} |")
+                } else {
+                    format!(" Request {idx} |")
+                };
+                if state.current_tab_idx() == Some(idx) {
+                    name.insert_str(0, " *");
+                }
+                name
             })
             .collect::<String>()
     );

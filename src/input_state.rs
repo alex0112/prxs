@@ -307,6 +307,7 @@ impl InputState {
         let taken_input = std::mem::take(&mut self.input);
         // just reset the input so all variables are nice
         self.scroll(false, 0);
+        self.selected = false;
 
         let mut sections = taken_input.split(' ');
         let Some(cmd) = sections.next() else {

@@ -114,6 +114,11 @@ impl LayoutState {
         self.current_tab_idx.and_then(|idx| self.tabs.get(idx))
     }
 
+    /// Get the current tab idx
+    pub fn current_tab_idx(&self) -> Option<usize> {
+        self.current_tab_idx
+    }
+
     /// Push the currently selected request into a new tab at the end of the tab list
     pub async fn separate_current_req(&mut self) {
         // So we have to remove it first so that we can own it to clone it 'cause that's the
@@ -131,10 +136,8 @@ impl LayoutState {
         }
     }
 
-    pub fn select_tab(&mut self, idx: usize) {
-        if idx < self.tabs.len() {
-            self.current_tab_idx = Some(idx);
-        }
+    pub fn select_tab(&mut self, idx: Option<usize>) {
+        self.current_tab_idx = idx.and_then(|i| (i < self.tabs.len()).then_some(i))
     }
 }
 

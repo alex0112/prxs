@@ -108,12 +108,14 @@ impl App {
             }
 
             match key.code {
+                // quit the app
                 KeyCode::Esc | KeyCode::Char('q') => Self::quit(tui, 0),
-                KeyCode::Char('c' | 'C') if key.modifiers == KeyModifiers::CONTROL => {
-                    Self::quit(tui, 0)
-                }
+                KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => Self::quit(tui, 0),
+                // go down the list of requests
                 KeyCode::Down | KeyCode::Char('j') => layout.next_req(),
+                // go up the list of requests
                 KeyCode::Up | KeyCode::Char('k') => layout.prev_req(),
+                // forward the currently-selected request
                 KeyCode::Char('f' | 'F') => {
                     if let Some(req) = layout.current_req_mut() {
                         if let Some(rx) = req.send_interaction(RequestInteraction::Forward) {
@@ -128,11 +130,13 @@ impl App {
                         }
                     }
                 }
+                // drop the currently-selected request
                 KeyCode::Char('d' | 'D') => {
                     if let Some(req) = layout.current_req_mut() {
                         _ = req.send_interaction(RequestInteraction::Drop);
                     }
                 }
+                // start inputting a command
                 KeyCode::Char('i' | ':') => {
                     layout.input.selected = true;
                     if key.code == KeyCode::Char(':') {
@@ -140,6 +144,8 @@ impl App {
                         layout.input.route_keycode(key.code);
                     }
                 }
+                KeyCode::Char('m' | 'M') => layout.select_tab(None),
+                // send the currently-selected request to a new tab
                 KeyCode::Char('s' | 'S') => layout.separate_current_req().await,
                 _ => {}
             }
@@ -151,7 +157,7 @@ impl App {
             // TODO: Handle errors here
             InputCommand::SaveSession(path) => self.session.save(path).unwrap(),
             InputCommand::Quit => Self::quit(tui, 0),
-            InputCommand::SelectTab(idx) => state.select_tab(idx),
+            InputCommand::SelectTab(idx) => state.select_tab(Some(idx)),
         }
     }
 }
