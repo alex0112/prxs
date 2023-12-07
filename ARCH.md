@@ -136,3 +136,46 @@ flowchart LR
 	%% when we receive a response
 	app-- "7. req.store_response(RequestResponse)" -->request
 ```
+
+## UI Design
+Each tab will have like  30% of the left-hand side taken up by a notes area, with like `:h for help` on the bototm? And the other 70% on the right-hand taken up by the request above the response
+
+Help can just be a big long list of data? but maybe we could make it automatically jump to the help specific to this section (e.g. help on the main view would jump to help#main, and help on a tab would jump to help#tab-specific-inputs or whatever)
+
+main view:
+```
+----------------------------------------------------------
+| * Main | Request 1 | Hacking Request |                 |
+----------------------------------------------------------
+| * GET google.com          | Request data...            |
+|   PUT site.com            |                            |
+|                           |                            |
+|                           |                           w|
+|                           |----------------------------|
+|                           | Response data...           |
+|                           |                            |
+|                           |                            |
+|                           |                            |
+|                          a|                           s|
+----------------------------------------------------------
+:help
+```
+
+other tab:
+```
+----------------------------------------------------------
+| Main | Request 1 | * Hacking Request |                 |
+----------------------------------------------------------
+| site is probably | Request data...                     |
+| vulnerable to i- |                                     |
+| njection         |                                     |
+|                  |                                    w|
+|                  |-------------------------------------|
+|                  | Response data...                    |
+|                  |                                     |
+|                  |                                     |
+|                  |                                     |
+|:h for help      a|                                    s|
+----------------------------------------------------------
+:help
+```

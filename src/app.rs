@@ -1,32 +1,24 @@
 use crate::{
-    event::EventHandler,
-    request::{ProxyInteraction, Request, RequestInteraction},
-    response_waiter::{RequestResponse, ResponseWaiter},
+    config::Session,
+    input_state::InputCommand,
+    layout::{LayoutState, PaneSelector},
+    request::RequestInteraction,
+    response_waiter::{CopyableResponse, RequestResponse, ResponseWaiter},
     tui::Tui,
     ProxyMessage,
 };
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use futures_util::stream::StreamExt;
 use std::{error, fmt::Debug, future::Future, io, pin::Pin};
-use tokio::{
-    select,
-    sync::{mpsc::UnboundedReceiver, oneshot},
-};
-use uuid::Uuid;
+use tokio::{select, sync::mpsc::UnboundedReceiver};
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 
 /// Application.
 pub struct App {
-    /// Track what the current highlighted item in the list is.
-    pub current_request_index: usize,
-
-    /// Temporary list of requests
-    pub requests: Vec<Request>,
-
-    /// The the thread which handles key/mouse events asynchronously
-    pub event_handler: EventHandler,
+    /// The thread which handles key/mouse events asynchronously
+    pub event_stream: EventStream,
 
     /// The "Server" which may or may not return an error at some point, so we need to keep
     /// watching it
@@ -35,147 +27,170 @@ pub struct App {
     /// The receiver for events sent from the proxy
     pub proxy_rx: UnboundedReceiver<ProxyMessage>,
 
+    /// The struct that handles waiting for request responses in the main event loop
     pub response_waiter: ResponseWaiter,
+
+    /// The current session state
+    pub session: Session,
 }
 
 impl App {
     /// Constructs a new instance of [`App`].
     pub fn new(
-        event_handler: EventHandler,
         proxy_server: Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>>,
         proxy_rx: UnboundedReceiver<ProxyMessage>,
+        session: Session,
     ) -> Self {
         Self {
-            current_request_index: 0,
-            requests: vec![],
-            event_handler,
+            event_stream: EventStream::new(),
             proxy_server,
             proxy_rx,
             response_waiter: ResponseWaiter::default(),
+            session,
         }
     }
 
-    pub fn increment_list_index(&mut self) {
-        if let Some(res) = self.current_request_index.checked_add(1) {
-            self.current_request_index = res % self.requests.len();
-        }
-    }
-
-    pub fn decrement_list_index(&mut self) {
-        self.current_request_index = self
-            .current_request_index
-            .checked_sub(1)
-            .unwrap_or(self.requests.len())
-    }
-
-    fn quit(&mut self, tui: &mut Tui) {
+    fn quit(tui: &mut Tui, exit_code: i32) -> ! {
         // we're quitting. so what if we return an error.
         tui.exit().unwrap();
-        std::process::exit(0);
+        std::process::exit(exit_code);
     }
 
-    pub async fn run(&mut self, tui: &mut Tui) {
+    pub async fn run(&mut self, mut tui: Tui, mut layout: LayoutState) {
         loop {
-            tui.draw(self).expect("Couldn't draw tui");
+            tui.draw(&mut layout).expect("Couldn't draw tui");
 
             // this will just keep going until you kill the app, basically
             select! {
-                ev = self.event_handler.next() => {
-                    self.handle_event(ev, tui).await;
+                ev = self.event_stream.next() => {
+                    if let Some(ev) = ev {
+                        self.handle_event(ev, &mut tui, &mut layout).await;
+                    }
                 }
                 res = &mut self.proxy_server => {
                     println!("Got err from server: {res:?}");
-                    self.quit(tui);
+                    Self::quit(&mut tui, 1);
                 }
                 req = self.proxy_rx.recv() => {
-                    if let Some(req) = req {
-                        self.handle_request(req).await;
+                    if let Some((req, sender)) = req {
+                        layout.add_request(req, sender);
                     }
                 }
                 resp = &mut self.response_waiter.next() => {
                     if let Some(resp) = resp {
-                        self.handle_request_response(resp).await;
+                        layout.handle_req_response(resp);
                     }
                 }
             }
         }
     }
 
-    async fn handle_event(&mut self, event: io::Result<Event>, tui: &mut Tui) {
-        match event {
+    async fn handle_event(
+        &mut self,
+        event: io::Result<Event>,
+        tui: &mut Tui,
+        layout: &mut LayoutState,
+    ) {
+        let ev = match event {
+            Ok(ev) => ev,
             Err(e) => {
                 println!("Agh! Everything has broken! {e}");
-                self.quit(tui);
+                Self::quit(tui, 1);
             }
-            Ok(Event::Key(key)) => match key.code {
-                KeyCode::Esc | KeyCode::Char('q') => self.quit(tui),
-                KeyCode::Char('c') | KeyCode::Char('C')
-                    if key.modifiers == KeyModifiers::CONTROL =>
-                {
-                    self.quit(tui)
+        };
+
+        if let Event::Key(key) = ev {
+            // Just reset it once they start typing again
+            layout.err_msg = None;
+
+            if layout.input.selected {
+                if let Some(cmd) = layout.input.route_keycode(key.code) {
+                    self.handle_input_command(cmd, tui, layout);
                 }
-                KeyCode::Down | KeyCode::Char('j') => self.increment_list_index(),
-                KeyCode::Up | KeyCode::Char('k') => self.decrement_list_index(),
-                KeyCode::Char('f') | KeyCode::Char('F') => {
-                    if let Some(req) = self.requests.get_mut(self.current_request_index) {
-                        if let Some(rx) = req.send_interaction(RequestInteraction::Forward).await {
+                return;
+            }
+
+            match key.code {
+                // quit the app
+                KeyCode::Esc | KeyCode::Char('q') => Self::quit(tui, 0),
+                KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => Self::quit(tui, 0),
+                // go down the list of requests
+                KeyCode::Down | KeyCode::Char('j') => layout.scroll_down(),
+                // go up the list of requests
+                KeyCode::Up | KeyCode::Char('k') => layout.scroll_up(),
+                // forward the currently-selected request
+                KeyCode::Char('f' | 'F') => {
+                    if let Some(req) = layout.current_req_mut() {
+                        if let Some(rx) = req.send_interaction(RequestInteraction::Forward) {
                             let id = req.id;
                             self.response_waiter.submit(Box::pin(async move {
-                                let response = rx
+                                let response = match rx
                                     .await
-                                    .expect("uhhh I don't know how to handle a None here");
+                                    .expect("uhhh I don't know how to handle a None here")
+                                {
+                                    Ok(resp) => Ok(CopyableResponse::from_resp(resp).await),
+                                    Err(e) => Err(e),
+                                };
 
                                 RequestResponse { id, response }
                             }));
                         }
                     }
                 }
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    if let Some(req) = self.requests.get_mut(self.current_request_index) {
-                        _ = req.send_interaction(RequestInteraction::Drop).await;
+                // drop the currently-selected request
+                KeyCode::Char('d' | 'D') => {
+                    if let Some(req) = layout.current_req_mut() {
+                        _ = req.send_interaction(RequestInteraction::Drop);
                     }
                 }
+                // start inputting a command
+                KeyCode::Char(c @ ('i' | ':')) => {
+                    layout.input.selected = true;
+                    if c == ':' {
+                        // to add the `:` that you'd expect
+                        layout.input.route_keycode(key.code);
+                    }
+                }
+                KeyCode::Char(c @ ('m' | 'w' | 'a' | 's')) => {
+                    layout.select_pane_with_input(PaneSelector::Key(c));
+                }
+                // send the currently-selected request to a new tab
+                KeyCode::Char('p' | 'P') => layout.separate_current_req().await,
+                KeyCode::Char('e' | 'E') => {
+                    if let Err(e) = tui.exit() {
+                        layout.show_error(format!("Couldn't prepare terminal for editing: {e}"));
+                        return;
+                    }
+                    layout.edit_current_req_notes();
+                    tui.init().expect("Can't restore terminal after editing");
+                }
                 _ => {}
-            },
-            // eh. don't care.
-            _ => {}
+            }
         }
     }
 
-    async fn handle_request(
-        &mut self,
-        (req, sender): (
-            hyper::Request<hyper::Body>,
-            oneshot::Sender<ProxyInteraction>,
-        ),
-    ) {
-        // just add it to the list, then handle interacting with it in the `handle_event`
-        // when it's selected
-        self.requests.push(Request {
-            id: Uuid::new_v4(),
-            interaction_tx: Some(sender),
-            inner: req,
-            resp: None,
-        });
-        self.current_request_index = self.requests.len() - 1;
-    }
-
-    async fn handle_request_response(&mut self, resp: RequestResponse) {
-        let Some(req) = self.requests.iter_mut().find(|r| r.id == resp.id) else {
-            println!("Couldn't find request for id {}", resp.id);
-            return;
-        };
-
-        req.store_response(resp).await;
+    fn handle_input_command(&mut self, cmd: InputCommand, tui: &mut Tui, state: &mut LayoutState) {
+        match cmd {
+            // TODO: Handle errors here
+            InputCommand::SaveSession(path) => self.session.save(path).unwrap(),
+            InputCommand::Quit => Self::quit(tui, 0),
+            InputCommand::SelectTab(idx) => state.select_pane_with_input(PaneSelector::Idx(idx)),
+            InputCommand::RenameTab(name) => state.rename_current_tab(name),
+            InputCommand::GunzipCurrent => state.try_gunzip_current(),
+        }
     }
 }
 
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for App {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        // We can't print any information about `proxy_server` cause it's a future that's pending
+        // until the app exits
         fmt.debug_struct("App")
-            .field("current_request_index", &self.current_request_index)
-            .field("requests", &self.requests)
-            .field("event_handler", &self.event_handler)
+            .field("event_stream", &self.event_stream)
+            .field("proxy_rx", &self.proxy_rx)
+            .field("response_waiter", &self.response_waiter)
+            .field("session", &self.session)
             .finish()
     }
 }

@@ -1,5 +1,6 @@
 use futures_core::stream::Stream;
-use hyper::{Body, Response};
+use http::{HeaderMap, HeaderValue, StatusCode, Version};
+use hyper::{body::Bytes, Body, Response};
 use std::{
     future::Future,
     pin::Pin,
@@ -7,10 +8,43 @@ use std::{
 };
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequestResponse {
     pub id: Uuid,
-    pub response: Result<Response<Body>, String>,
+    pub response: Result<CopyableResponse, String>,
+}
+
+// We do this because we want to be able to display the `Bytes` of the body in the way we want.
+// We can't do that if we just use `hyper::Response::Body` because you have to consume it to get
+// the whole underlying bytes, which we can't do every time we want to display this
+#[derive(Clone, Debug)]
+pub struct CopyableResponse {
+    pub body: Bytes,
+    pub status: StatusCode,
+    pub version: Version,
+    pub headers: HeaderMap<HeaderValue>,
+}
+
+impl CopyableResponse {
+    pub async fn from_resp(resp: Response<Body>) -> Self {
+        let (parts, body) = resp.into_parts();
+        let bytes = hyper::body::to_bytes(body)
+            .await
+            .expect("This body was created by hyper so it's trustworty");
+
+        Self {
+            body: bytes,
+            status: parts.status,
+            version: parts.version,
+            headers: parts.headers,
+        }
+    }
+
+    pub fn try_gunzip(&mut self) -> std::io::Result<()> {
+        let res = crate::gunzip(&self.body)?;
+        self.body = res.into();
+        Ok(())
+    }
 }
 
 type ResponseFut = Pin<Box<dyn Future<Output = RequestResponse>>>;
@@ -19,6 +53,15 @@ type ResponseFut = Pin<Box<dyn Future<Output = RequestResponse>>>;
 pub struct ResponseWaiter {
     requests: Vec<ResponseFut>,
     waker: Option<Waker>,
+}
+
+impl std::fmt::Debug for ResponseWaiter {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct("ResponseWaiter")
+            .field("requests_len", &self.requests.len())
+            .field("waker", &self.waker)
+            .finish()
+    }
 }
 
 impl ResponseWaiter {

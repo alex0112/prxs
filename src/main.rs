@@ -1,15 +1,24 @@
+#![allow(clippy::module_name_repetitions)]
+
 use app::{App, AppResult};
-use config::Config;
-use event::EventHandler;
+use async_trait::async_trait;
+use config::{Config, Session};
 use request::ProxyInteraction;
 use tui::Tui;
 
+use flate2::read::GzDecoder;
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server,
 };
+use layout::LayoutState;
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{future::Future, io, net::SocketAddr, pin::Pin};
+use std::{
+    future::Future,
+    io::{stdout, Read},
+    net::SocketAddr,
+    pin::Pin,
+};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
     oneshot::{self, channel},
@@ -17,9 +26,6 @@ use tokio::sync::{
 
 /// Application.
 mod app;
-
-/// Terminal events handler.
-mod event;
 
 /// Widget renderer.
 mod ui;
@@ -36,24 +42,37 @@ mod response_waiter;
 /// The config struct to manage options
 mod config;
 
+/// The struct to manage the state of what's shown to the user
+mod layout;
+
+/// To manage the state of the bottom input bar
+mod input_state;
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
-    let config = Config::retrieve();
+    let config = Config::get();
+
+    let session = config
+        .session_file
+        .as_ref()
+        .and_then(|file| Session::restore(file).ok())
+        .unwrap_or_default();
 
     let (proxy_tx, proxy_rx) = unbounded_channel();
-    let server = spawn_proxy(proxy_tx, &config).await;
+    let server = spawn_proxy(proxy_tx);
 
     // Initialize the terminal user interface.
-    let backend = CrosstermBackend::new(io::stdout());
+    let backend = CrosstermBackend::new(stdout());
     let terminal = Terminal::new(backend)?;
-    let events = EventHandler::new();
     let mut tui = Tui::new(terminal);
     tui.init()?;
 
-    // Create an application.
-    let mut app = App::new(events, server, proxy_rx);
+    let layout = LayoutState::default();
 
-    app.run(&mut tui).await;
+    // Create an application.
+    let mut app = App::new(server, proxy_rx, session);
+
+    app.run(tui, layout).await;
     Ok(())
 }
 
@@ -61,7 +80,7 @@ async fn handle_proxied_req(
     req: Request<Body>,
     tx: UnboundedSender<ProxyMessage>,
 ) -> Result<Response<Body>, hyper::Error> {
-    let (send_req, hold_req) = req.clone();
+    let (send_req, hold_req) = req.clone().await;
 
     let (tui_tx, tui_rx) = channel();
 
@@ -76,7 +95,7 @@ async fn handle_proxied_req(
 
             let (send_resp, fw_resp) = match resp {
                 Ok(resp) => {
-                    let (send_resp, fw_resp) = resp.clone();
+                    let (send_resp, fw_resp) = resp.clone().await;
                     (Ok(send_resp), Ok(fw_resp))
                 }
                 Err(e) => (Err(e.to_string()), Err(e)),
@@ -97,11 +116,10 @@ pub type ProxyMessage = (Request<Body>, oneshot::Sender<ProxyInteraction>);
 // We're erasing the type here 'cause afaict it's impossible to name the type that results from
 // calling `serve` and also all we really care about is that it's a future which may return a
 // result
-async fn spawn_proxy(
+fn spawn_proxy(
     tui_tx: UnboundedSender<ProxyMessage>,
-    config: &Config,
 ) -> Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], Config::get().port));
 
     let make_svc = make_service_fn(move |_conn| {
         let tui_tx = tui_tx.clone();
@@ -116,15 +134,17 @@ async fn spawn_proxy(
     Box::pin(Server::bind(&addr).serve(make_svc))
 }
 
+#[async_trait]
 trait ConsumingClone
 where
     Self: Sized,
 {
-    fn clone(self) -> (Self, Self);
+    async fn clone(self) -> (Self, Self);
 }
 
+#[async_trait]
 impl ConsumingClone for Request<Body> {
-    fn clone(self) -> (Self, Self) {
+    async fn clone(self) -> (Self, Self) {
         fn build_builder(req: &Request<Body>) -> http::request::Builder {
             let mut builder = Request::builder()
                 .uri(req.uri())
@@ -146,8 +166,8 @@ impl ConsumingClone for Request<Body> {
         // also should we use async_trait for this? Honestly I don't want to pull it in as a
         // dependency and kinda just wanna wait until afit and rtitit are stabilized
         // in a few weeks
-        let body_data = tokio::runtime::Handle::current()
-            .block_on(hyper::body::to_bytes(self))
+        let body_data = hyper::body::to_bytes(self)
+            .await
             .expect("This req was already constructed by hyper so it's trustworthy");
 
         (
@@ -157,8 +177,9 @@ impl ConsumingClone for Request<Body> {
     }
 }
 
+#[async_trait]
 impl ConsumingClone for Response<Body> {
-    fn clone(self) -> (Self, Self) {
+    async fn clone(self) -> (Self, Self) {
         fn build_builder(resp: &Response<Body>) -> http::response::Builder {
             let mut builder = Response::builder()
                 .status(resp.status())
@@ -174,8 +195,8 @@ impl ConsumingClone for Response<Body> {
         let first = build_builder(&self);
         let second = build_builder(&self);
 
-        let body_data = tokio::runtime::Handle::current()
-            .block_on(hyper::body::to_bytes(self))
+        let body_data = hyper::body::to_bytes(self)
+            .await
             .expect("This resp was already constructed by hyper so it's trustworthy");
 
         (
@@ -183,4 +204,24 @@ impl ConsumingClone for Response<Body> {
             second.body(body_data.into()).unwrap(),
         )
     }
+}
+
+#[async_trait]
+impl<T: ConsumingClone + Send> ConsumingClone for Option<T> {
+    async fn clone(self) -> (Self, Self) {
+        match self {
+            None => (None, None),
+            Some(inner) => {
+                let (inner1, inner2) = inner.clone().await;
+                (Some(inner1), Some(inner2))
+            }
+        }
+    }
+}
+
+fn gunzip(data: impl AsRef<[u8]>) -> std::io::Result<Vec<u8>> {
+    let mut decoder = GzDecoder::new(data.as_ref());
+    let mut v = Vec::new();
+    decoder.read_to_end(&mut v)?;
+    Ok(v)
 }

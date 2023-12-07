@@ -1,5 +1,5 @@
-use crate::app::{App, AppResult};
 use crate::ui;
+use crate::{app::AppResult, layout::LayoutState};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
@@ -48,8 +48,8 @@ impl Tui {
     ///
     /// [`Draw`]: ratatui::Terminal::draw
     /// [`rendering`]: crate::ui:render
-    pub fn draw(&mut self, app: &App) -> io::Result<()> {
-        self.terminal.draw(|frame| ui::render(app, frame))?;
+    pub fn draw(&mut self, state: &mut LayoutState) -> io::Result<()> {
+        self.terminal.draw(|frame| ui::render(state, frame))?;
         Ok(())
     }
 
@@ -57,7 +57,7 @@ impl Tui {
     ///
     /// This function is also used for the panic hook to revert
     /// the terminal properties if unexpected errors occur.
-    fn reset() -> AppResult<()> {
+    pub fn reset() -> AppResult<()> {
         terminal::disable_raw_mode()?;
         crossterm::execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
         Ok(())

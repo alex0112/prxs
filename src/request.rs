@@ -1,10 +1,10 @@
-use crate::response_waiter::RequestResponse;
+use crate::{config::Config, response_waiter::RequestResponse, ConsumingClone};
 use hyper::{Body, Response};
 use std::ops::Deref;
 use tokio::sync::oneshot::{self, channel};
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum RequestInteraction {
     r#Drop,
     Forward,
@@ -30,7 +30,7 @@ pub struct Request {
 
 impl Request {
     #[must_use]
-    pub async fn send_interaction(
+    pub fn send_interaction(
         &mut self,
         interaction: RequestInteraction,
     ) -> Option<oneshot::Receiver<Result<Response<Body>, String>>> {
@@ -53,14 +53,47 @@ impl Request {
                         println!("Couldn't tell proxy to forward request {self:?}");
                         None
                     }
-                    Ok(_) => Some(proxy_rx),
+                    Ok(()) => Some(proxy_rx),
                 }
             }
         }
     }
 
-    pub async fn store_response(&mut self, resp: RequestResponse) {
+    pub fn store_response(&mut self, mut resp: RequestResponse) {
+        if Config::get().auto_gunzip {
+            if let Ok(ref mut resp) = resp.response {
+                // If we try to gunzip it and it doesn't work, we don't care
+                _ = resp.try_gunzip();
+            }
+        }
+
         self.resp = Some(resp);
+    }
+
+    pub async fn get_tab_copy(self) -> (Self, Self) {
+        let Request {
+            id,
+            interaction_tx,
+            inner,
+            resp,
+        } = self;
+        let (inner1, inner2) = inner.clone().await;
+        let resp_clone = resp.clone();
+
+        (
+            Self {
+                id,
+                interaction_tx,
+                inner: inner1,
+                resp,
+            },
+            Self {
+                id,
+                interaction_tx: None,
+                inner: inner2,
+                resp: resp_clone,
+            },
+        )
     }
 }
 
