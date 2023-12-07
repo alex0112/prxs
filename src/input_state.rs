@@ -299,6 +299,7 @@ impl InputState {
 pub enum InputCommand {
     SaveSession(String),
     SelectTab(usize),
+    RenameTab(String),
     GunzipCurrent,
     Quit,
 }
@@ -321,6 +322,10 @@ impl InputState {
             ":s" | ":S" => sections.next().map(|s| InputCommand::SaveSession(s.into())),
             ":q" | ":Q" => Some(InputCommand::Quit),
             ":gz" => Some(InputCommand::GunzipCurrent),
+            ":rn" => {
+                let name = sections.collect::<Vec<&str>>().join(" ");
+                (!name.is_empty()).then_some(InputCommand::RenameTab(name))
+            }
             i if !i.is_empty() => {
                 if !i.starts_with(':') {
                     return None;

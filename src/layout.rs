@@ -192,6 +192,12 @@ impl LayoutState {
         self.current_tab_idx().and_then(|idx| self.tabs.get(idx))
     }
 
+    /// Get a mutable reference to the current tab if one is selected that is not the main tab
+    fn current_tab_mut(&mut self) -> Option<&mut Tab> {
+        self.current_tab_idx()
+            .and_then(|idx| self.tabs.get_mut(idx))
+    }
+
     /// Get the current tab idx
     pub fn current_tab_idx(&self) -> Option<usize> {
         match self.current_pane {
@@ -244,11 +250,18 @@ impl LayoutState {
 
     /// Pull up the system editor for the current request and save it back in
     pub fn edit_current_req_notes(&mut self) {
-        if let Some(tab) = self.current_tab_idx().and_then(|i| self.tabs.get_mut(i)) {
+        if let Some(tab) = self.current_tab_mut() {
             match edit::edit(tab.notes.as_str()) {
                 Ok(edited) => tab.notes = edited,
                 Err(e) => self.show_error(format!("Couldn't edit notes: {e}")),
             }
+        }
+    }
+
+    /// Rename the current tab
+    pub fn rename_current_tab(&mut self, name: String) {
+        if let Some(tab) = self.current_tab_mut() {
+            tab.name = Some(name);
         }
     }
 }

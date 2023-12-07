@@ -175,6 +175,7 @@ impl App {
             InputCommand::SaveSession(path) => self.session.save(path).unwrap(),
             InputCommand::Quit => Self::quit(tui, 0),
             InputCommand::SelectTab(idx) => state.select_pane_with_input(PaneSelector::Idx(idx)),
+            InputCommand::RenameTab(name) => state.rename_current_tab(name),
             InputCommand::GunzipCurrent => state.try_gunzip_current(),
         }
     }
