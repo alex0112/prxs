@@ -1,5 +1,2 @@
 /target
 requests.log
-*.pem
-*.crt
-*.pfx
