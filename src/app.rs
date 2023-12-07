@@ -7,10 +7,7 @@ use crate::{
     tui::Tui,
     ProxyMessage,
 };
-use crossterm::{
-    event::{Event, EventStream, KeyCode, KeyModifiers},
-    terminal::LeaveAlternateScreen,
-};
+use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use futures_util::stream::StreamExt;
 use std::{error, fmt::Debug, future::Future, io, pin::Pin};
 use tokio::{select, sync::mpsc::UnboundedReceiver};
