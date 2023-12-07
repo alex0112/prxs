@@ -10,7 +10,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{
         block::{Position, Title},
-        Block, BorderType, Borders, List, ListItem, Paragraph,
+        Block, BorderType, Borders, Clear, List, ListItem, Paragraph,
     },
     Frame,
 };
@@ -88,6 +88,10 @@ pub fn render(state: &mut LayoutState, frame: &mut Frame) {
 
         let list = http_request_list_widget(state);
         frame.render_stateful_widget(list, main_tab_layout[0], state.req_idx_mut());
+    }
+
+    if let Some(ref msg) = state.err_msg {
+        show_popup("Error", msg.as_str(), frame);
     }
 }
 
@@ -330,4 +334,59 @@ fn tab_notes_widget<'t>(tab: &'t Tab, selected: &Pane) -> Paragraph<'t> {
     }
 
     Paragraph::new(tab.notes.as_str()).block(block)
+}
+
+fn show_popup(title: &str, msg: &str, frame: &mut Frame) {
+    let screen = frame.size();
+
+    // Need to add 2 for the borders
+    let height = msg.lines().count().min(screen.height as usize / 2) + 2;
+    let width = msg
+        .lines()
+        .map(str::len)
+        .max()
+        .unwrap_or(0)
+        .min(screen.width as usize / 2)
+        + 2;
+
+    let rect = centered_rect(width as u16, height as u16, screen);
+
+    let shadow = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::QuadrantInside);
+
+    // offset it to the bottom right
+    let shadow_rect = Rect::new(rect.x + 1, rect.y + 1, rect.width, rect.height);
+
+    frame.render_widget(Clear, shadow_rect);
+    frame.render_widget(shadow, shadow_rect);
+
+    let paragraph = Paragraph::new(msg).block(Block::default().title(title).borders(Borders::ALL));
+
+    frame.render_widget(Clear, rect);
+    frame.render_widget(paragraph, rect);
+}
+
+/// helper function to create a centered rect using up certain percentage of the
+/// available Rect `r`, mostly copied from ratatui's examples
+fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
+    let vert_border = (r.height - height) / 2;
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(vert_border),
+            Constraint::Length(height),
+            Constraint::Length(vert_border),
+        ])
+        .split(r);
+
+    let horiz_border = (r.width - width) / 2;
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(horiz_border),
+            Constraint::Length(width),
+            Constraint::Length(horiz_border),
+        ])
+        .split(popup_layout[1])[1]
 }

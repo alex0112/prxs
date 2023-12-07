@@ -62,7 +62,8 @@ impl Request {
     pub fn store_response(&mut self, mut resp: RequestResponse) {
         if Config::get().auto_gunzip {
             if let Ok(ref mut resp) = resp.response {
-                resp.try_gunzip();
+                // If we try to gunzip it and it doesn't work, we don't care
+                _ = resp.try_gunzip();
             }
         }
 

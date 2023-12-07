@@ -100,6 +100,9 @@ impl App {
         };
 
         if let Event::Key(key) = ev {
+            // Just reset it once they start typing again
+            layout.err_msg = None;
+
             if layout.input.selected {
                 if let Some(cmd) = layout.input.route_keycode(key.code) {
                     self.handle_input_command(cmd, tui, layout);
@@ -141,15 +144,15 @@ impl App {
                     }
                 }
                 // start inputting a command
-                KeyCode::Char('i' | ':') => {
+                KeyCode::Char(c @ ('i' | ':')) => {
                     layout.input.selected = true;
-                    if key.code == KeyCode::Char(':') {
+                    if c == ':' {
                         // to add the `:` that you'd expect
                         layout.input.route_keycode(key.code);
                     }
                 }
-                KeyCode::Char(c @ 'm' | c @ 'w' | c @ 'a' | c @ 's') => {
-                    layout.select_pane_with_input(PaneSelector::Key(c))
+                KeyCode::Char(c @ ('m' | 'w' | 'a' | 's')) => {
+                    layout.select_pane_with_input(PaneSelector::Key(c));
                 }
                 // send the currently-selected request to a new tab
                 KeyCode::Char('p' | 'P') => layout.separate_current_req().await,

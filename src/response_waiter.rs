@@ -40,10 +40,10 @@ impl CopyableResponse {
         }
     }
 
-    pub fn try_gunzip(&mut self) {
-        if let Ok(res) = crate::gunzip(&self.body) {
-            self.body = res.into();
-        }
+    pub fn try_gunzip(&mut self) -> std::io::Result<()> {
+        let res = crate::gunzip(&self.body)?;
+        self.body = res.into();
+        Ok(())
     }
 }
 

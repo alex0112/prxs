@@ -71,11 +71,8 @@ pub struct LayoutState {
     current_req_idx: ListState,
     tabs: Vec<Tab>,
     pub input: InputState,
-    // We could use an enum for what pane is selected, but then we'd either have to have it be the
-    // same regardless of what type of tab we're viewing or make sure it's always in sync with
-    // what type of tab we're selecting, which seems like a hassle, so let's just use a usize and
-    // have each type of view interpret that as works for them
     current_pane: Pane,
+    pub err_msg: Option<String>,
 }
 
 impl LayoutState {
@@ -134,7 +131,10 @@ impl LayoutState {
 
     pub fn handle_req_response(&mut self, resp: RequestResponse) {
         let Some(req) = self.requests.iter_mut().find(|r| r.id == resp.id) else {
-            println!("Couldn't find request for id {}", resp.id);
+            self.show_error(format!(
+                "Couldn't handle request response: no request for id {}",
+                resp.id
+            ));
             return;
         };
 
@@ -196,7 +196,7 @@ impl LayoutState {
     pub fn current_tab_idx(&self) -> Option<usize> {
         match self.current_pane {
             Pane::Tab { idx, .. } => Some(idx),
-            _ => None,
+            Pane::Main { .. } => None,
         }
     }
 
@@ -229,11 +229,21 @@ impl LayoutState {
             .and_then(|r| r.resp.as_mut())
             .and_then(|r| r.response.as_mut().ok())
         {
-            resp.try_gunzip();
+            if let Err(e) = resp.try_gunzip() {
+                self.show_error(format!(
+                    "Can't gunzip response: {e}\nWas it already unzipped?"
+                ));
+            }
         }
+    }
+
+    /// Show the specified error string to the user
+    pub fn show_error(&mut self, err: String) {
+        self.err_msg = Some(err);
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum PaneSelector {
     Idx(usize),
     Key(char),
