@@ -1,6 +1,5 @@
 use crate::{
     config::Session,
-    event::EventHandler,
     input_state::InputCommand,
     layout::{LayoutState, PaneSelector},
     request::RequestInteraction,
@@ -8,7 +7,10 @@ use crate::{
     tui::Tui,
     ProxyMessage,
 };
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::{
+    event::{Event, EventStream, KeyCode, KeyModifiers},
+    terminal::LeaveAlternateScreen,
+};
 use futures_util::stream::StreamExt;
 use std::{error, fmt::Debug, future::Future, io, pin::Pin};
 use tokio::{select, sync::mpsc::UnboundedReceiver};
@@ -19,7 +21,7 @@ pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 /// Application.
 pub struct App {
     /// The thread which handles key/mouse events asynchronously
-    pub event_handler: EventHandler,
+    pub event_stream: EventStream,
 
     /// The "Server" which may or may not return an error at some point, so we need to keep
     /// watching it
@@ -38,13 +40,12 @@ pub struct App {
 impl App {
     /// Constructs a new instance of [`App`].
     pub fn new(
-        event_handler: EventHandler,
         proxy_server: Pin<Box<dyn Future<Output = Result<(), hyper::Error>>>>,
         proxy_rx: UnboundedReceiver<ProxyMessage>,
         session: Session,
     ) -> Self {
         Self {
-            event_handler,
+            event_stream: EventStream::new(),
             proxy_server,
             proxy_rx,
             response_waiter: ResponseWaiter::default(),
@@ -64,8 +65,10 @@ impl App {
 
             // this will just keep going until you kill the app, basically
             select! {
-                ev = self.event_handler.next() => {
-                    self.handle_event(ev, &mut tui, &mut layout).await;
+                ev = self.event_stream.next() => {
+                    if let Some(ev) = ev {
+                        self.handle_event(ev, &mut tui, &mut layout).await;
+                    }
                 }
                 res = &mut self.proxy_server => {
                     println!("Got err from server: {res:?}");
@@ -156,6 +159,14 @@ impl App {
                 }
                 // send the currently-selected request to a new tab
                 KeyCode::Char('p' | 'P') => layout.separate_current_req().await,
+                KeyCode::Char('e' | 'E') => {
+                    if let Err(e) = tui.exit() {
+                        layout.show_error(format!("Couldn't prepare terminal for editing: {e}"));
+                        return;
+                    }
+                    layout.edit_current_req_notes();
+                    tui.init().expect("Can't restore terminal after editing");
+                }
                 _ => {}
             }
         }
@@ -178,7 +189,7 @@ impl Debug for App {
         // We can't print any information about `proxy_server` cause it's a future that's pending
         // until the app exits
         fmt.debug_struct("App")
-            .field("event_handler", &self.event_handler)
+            .field("event_stream", &self.event_stream)
             .field("proxy_rx", &self.proxy_rx)
             .field("response_waiter", &self.response_waiter)
             .field("session", &self.session)

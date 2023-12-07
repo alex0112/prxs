@@ -241,6 +241,16 @@ impl LayoutState {
     pub fn show_error(&mut self, err: String) {
         self.err_msg = Some(err);
     }
+
+    /// Pull up the system editor for the current request and save it back in
+    pub fn edit_current_req_notes(&mut self) {
+        if let Some(tab) = self.current_tab_idx().and_then(|i| self.tabs.get_mut(i)) {
+            match edit::edit(tab.notes.as_str()) {
+                Ok(edited) => tab.notes = edited,
+                Err(e) => self.show_error(format!("Couldn't edit notes: {e}")),
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone)]

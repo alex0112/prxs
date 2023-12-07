@@ -5,13 +5,13 @@ authors = ["alex <alex0112@protonmail.com>", "june <junewelker@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-crossterm = { version = "0.27.0", default-features = false }
+crossterm = { version = "0.27.0", default-features = false, features = ["event-stream"] }
 ratatui = { version = "0.24.0", default-features = false, features = ["crossterm"] }
 # rcgen = { version = "0.11.3", default-features = false }
 tokio = { version = "1.33.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 hyper = { version = "0.14.27", default-features = false, features = ["server", "client", "http1", "tcp"] }
 http = { version = "0.2.11", default-features = false }
-uuid = { version = "1.5.0", default-features = false, features = ["v4"] }
+uuid = { version = "1.5.0", default-features = false, features = ["v4", "serde"] }
 futures-core = { version = "0.3.29", default-features = false }
 futures-util = { version = "0.3.29", default-features = false }
 clap = { version = "4.4.8", features = ["derive"] }
@@ -24,3 +24,4 @@ unicode-width = "0.1.11"
 unicode-segmentation = "1.10.1"
 async-trait = "0.1.74"
 flate2 = "1.0.28"
+edit = "0.1.4"

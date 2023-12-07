@@ -3,7 +3,6 @@
 use app::{App, AppResult};
 use async_trait::async_trait;
 use config::{Config, Session};
-use event::EventHandler;
 use request::ProxyInteraction;
 use tui::Tui;
 
@@ -27,9 +26,6 @@ use tokio::sync::{
 
 /// Application.
 mod app;
-
-/// Terminal events handler.
-mod event;
 
 /// Widget renderer.
 mod ui;
@@ -68,14 +64,13 @@ async fn main() -> AppResult<()> {
     // Initialize the terminal user interface.
     let backend = CrosstermBackend::new(stdout());
     let terminal = Terminal::new(backend)?;
-    let events = EventHandler::new();
     let mut tui = Tui::new(terminal);
     tui.init()?;
 
     let layout = LayoutState::default();
 
     // Create an application.
-    let mut app = App::new(events, server, proxy_rx, session);
+    let mut app = App::new(server, proxy_rx, session);
 
     app.run(tui, layout).await;
     Ok(())
