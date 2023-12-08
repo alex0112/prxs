@@ -3,3 +3,4 @@ requests.log
 *.pem
 *.crt
 *.pfx
+*.der
