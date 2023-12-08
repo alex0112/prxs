@@ -8,7 +8,6 @@ use hyper::server::conn::AddrIncoming;
 // use hyper::service::{make_service_fn, service_fn};
 // use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use rustls::Certificate;
-use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::SocketAddr;
 
 use hyper_rustls::TlsAcceptor;
@@ -60,8 +59,7 @@ fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
-
-    Ok(rustls_pemfile::rsa_private_keys(&mut reader)?
+    Ok(rustls_pemfile::pkcs8_private_keys(&mut reader)?
         .first()
         .map(|cert_data| rustls::PrivateKey(cert_data.clone()))
         .unwrap())

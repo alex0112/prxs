@@ -25,10 +25,18 @@ fi
 #openssl req -x509 -newkey rsa:4096 -keyout private_key.pem -out certificate.pem -days 365 -nodes -subj "/CN=localhost"
 
 #openssl req -x509 -newkey rsa:4096 -keyout praxis_key.pem -out praxis_cert.pem -days 3650 -nodes -subj "/CN=AAAAAApraxis"
-openssl req -x509 -newkey rsa:4096 -keyout praxis_key.pem -out praxis_cert.pem -days 3650 -nodes -subj "*"
+openssl req -x509 -newkey rsa:4096 -keyout praxis_key.pem -out praxis_cert.pem -days 3650 -nodes -subj "/CN=*"
+
+## Concatenate the cert and private key together into their own file
+if [! -e "complete_cert.pem" ]; then
+    touch complete_cert.pem
+fi
+
+echo "Attempting to create complete_cert.pem..."
+cat praxis_key.pem > complete_cert.pem && cat praxis_cert.pem >> complete_cert.pem
 
 ## Convert the key and cert pem files into a passwordless .pfx file
-openssl pkcs12 -export -out praxis.pfx -inkey praxis_key.pem -in praxis_cert.pem -passout pass:
+##openssl pkcs12 -export -out praxis.pfx -inkey praxis_key.pem -in praxis_cert.pem -passout pass:
 
 ## Clean up the .pem files, they're not needed regardless of the success or failure of the previous command
 #rm private_key.pem; rm certificate.pem;
