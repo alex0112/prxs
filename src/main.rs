@@ -137,8 +137,8 @@ fn spawn_proxy(
     });
 
     let tls_acceptor = build_tls_acceptor(
-        "./praxis_key.pem".to_owned(),
         "./praxis_cert.pem".to_owned(),
+        "./praxis_key.pem".to_owned(),
         addr,
     )
     .unwrap();
