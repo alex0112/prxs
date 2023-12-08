@@ -25,3 +25,7 @@ unicode-segmentation = "1.10.1"
 async-trait = "0.1.74"
 flate2 = "1.0.28"
 edit = "0.1.4"
+hyper-rustls = { version = "0.24.2", features = ["acceptor"] }
+rustls-pki-types = "1"
+rustls-pemfile = "1.0.4"
+rustls = "*"
