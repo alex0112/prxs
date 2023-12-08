@@ -278,7 +278,7 @@ impl LayoutState {
         // hmmm this would be better if we only tried to parse once we've verified that it doesn't
         // fit the other options but oh well, whatever
         match input {
-            PaneSelector::Idx(i) => {
+            PaneSelector::Idx(i) => if i < self.requests.len() {
                 self.current_pane = Pane::Tab {
                     idx: i.min(self.requests.len() - 1),
                     scroll: 0,
