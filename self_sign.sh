@@ -24,22 +24,23 @@ fi
 ## Invoke openssl to generate the private key and cert in .pem format
 #openssl req -x509 -newkey rsa:4096 -keyout private_key.pem -out certificate.pem -days 365 -nodes -subj "/CN=localhost"
 
-openssl req -x509 -newkey rsa:4096 -keyout praxis_key.pem -out praxis_cert.pem -days 365 -nodes -subj "/CN=localhost"
+#openssl req -x509 -newkey rsa:4096 -keyout praxis_key.pem -out praxis_cert.pem -days 3650 -nodes -subj "/CN=AAAAAApraxis"
+openssl req -x509 -newkey rsa:4096 -keyout praxis_key.pem -out praxis_cert.pem -days 3650 -nodes -subj "*"
 
 ## Convert the key and cert pem files into a passwordless .pfx file
-#openssl pkcs12 -export -out praxis.pfx -inkey private_key.pem -in certificate.pem -passout pass:
+openssl pkcs12 -export -out praxis.pfx -inkey praxis_key.pem -in praxis_cert.pem -passout pass:
 
 ## Clean up the .pem files, they're not needed regardless of the success or failure of the previous command
-# rm private_key.pem; rm certificate.pem;
+#rm private_key.pem; rm certificate.pem;
 
-# if [ -e "praxis.pfx" ]; then
-#     echo "Created praxis.pfx successfully in present working directory.";
-#     echo "Quitting..."
-#     exit 0
-# else
-#     echo "Unable to generate the pfx file. Aborting."
-#     exit 1
-# fi
+if [ -e "praxis.pfx" ]; then
+    echo "Created praxis.pfx successfully in present working directory.";
+    echo "Quitting..."
+    exit 0
+else
+    echo "Unable to generate the pfx file. Aborting."
+    exit 1
+fi
 
 
 
