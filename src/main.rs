@@ -48,6 +48,11 @@ mod layout;
 /// To manage the state of the bottom input bar
 mod input_state;
 
+/// For creation of the tls connector
+mod tls_decrypt;
+
+use tls_decrypt::build_tls_acceptor;
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
     let config = Config::get();
@@ -131,7 +136,14 @@ fn spawn_proxy(
         }
     });
 
-    Box::pin(Server::bind(&addr).serve(make_svc))
+    let tls_acceptor = build_tls_acceptor(
+        "./praxis_key.pem".to_owned(),
+        "./praxis_cert.pem".to_owned(),
+        addr,
+    )
+    .unwrap();
+
+    Box::pin(Server::builder(tls_acceptor).serve(make_svc))
 }
 
 #[async_trait]
