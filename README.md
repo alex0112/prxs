@@ -1,12 +1,17 @@
+
 # prxs
 
 (Pronounced Praxis)
 
-`prxs` is a web application penetration testing tool, that allows users to perform common pentesting tasks from their terminal.
+`prxs` is a web application penetration testing tool, that allows users to perform common pentesting tasks from their terminal. Users will find it familiar to tools such as [BurpSuite](https://portswigger.net/burp) or [MITMProxy](https://mitmproxy.org/). For our rationale and design philosophy, see [RATIONALE.md][https://github.com/alex0112/prxs/blob/main/RATIONALE.md].
+
+## Getting Started
+While in its alpha release, the best way to install praxis is to clone this repository, and build from source:
+
+
 
 
 ## Minimum Viable Product
-
 - A user invokes the binary
 - They see a basic terminal UI that allows them to see a list of captured requests
 - Highlighting a request in the UI opens it up in a separate panel with the raw HTTP content exposed
