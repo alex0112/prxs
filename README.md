@@ -52,7 +52,7 @@ See [USAGE.md](https://github.com/alex0112/prxs/blob/main/USAGE.md) for a compre
 (*TL;DR* navigation is vim-like, `j`, and `k` allow navigation through the request list)
 
 #### proxy
-In order to recieve requests, the user must instruct their browser or application of choice to proxy traffic to the application. We find FoxyProxy ([Firefox](https://addons.mozilla.org/en-US/firefox/addon/foxyproxy-standard/), [Chrome](https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp?pli=1)) to be a useful tool in this regard. Point it at `localhost:8080` (or whichever port you specify) while praxis is running and you will start to see traffic.
+In order to receive requests, the user must instruct their browser or application of choice to proxy traffic to the application. We find FoxyProxy ([Firefox](https://addons.mozilla.org/en-US/firefox/addon/foxyproxy-standard/), [Chrome](https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp?pli=1)) to be a useful tool in this regard. Point it at `localhost:8080` (or whichever port you specify) while praxis is running and you will start to see traffic.
 
 #### TLS decryption
 The primary reason http traffic inspection is useful is to observe what requests a site or application may be making in plaintext. As it currently stands the TLS decryption portion of praxis is currently under development in the branch `feature/rustls-connects`, and with luck will be merged into `main` soon. 
