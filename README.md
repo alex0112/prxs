@@ -1,47 +1,84 @@
-# prxs
+# Praxis
 
-(Pronounced Praxis)
+> Praxis (n.) 
+> 
+> *The practical means by which a thing is accomplished. The opposite of theory.*
 
-`prxs` is a web application penetration testing tool, that allows users to perform common pentesting tasks from their terminal.
+![Praxis Application Preview](https://github.com/alex0112/prxs/assets/7142972/8f9c6b83-32ed-43f8-984b-67809bd0a3fe)
 
+`prxs` is a web application penetration testing tool, that allows users to perform common pentesting tasks from their terminal. Users will find it similar to tools such as [BurpSuite](https://portswigger.net/burp) or [MITMProxy](https://mitmproxy.org/). For our rationale and design philosophy, see [RATIONALE.md](https://github.com/alex0112/prxs/blob/main/RATIONALE.md).
 
-## Minimum Viable Product
+### Disclaimer
+You know the drill: *This tool is intended for security research purposes, always gain permission before pentesting someone else's system. The developers of praxis are not liable for your actions or any damages you may cause* Be an [ethical hacker](https://www.synopsys.com/glossary/what-is-ethical-hacking.html#B).
 
-- A user invokes the binary
-- They see a basic terminal UI that allows them to see a list of captured requests
-- Highlighting a request in the UI opens it up in a separate panel with the raw HTTP content exposed
-- By default (for the MVP) the app just records the response and forwards the request automatically. The initial MVP is less a MITM tool and more a HTTP traffic inspector that can be iterated upon
+Happy hacking.
 
-### Potential Crates
+## Getting Started
 
-- [ratatui](https://crates.io/crates/ratatui) for an easily-configurable tui
-- [inquire](https://github.com/mikaelmello/inquire) for interactive cli functionality
-- [rcgen](https://crates.io/crates/rcgen) for generating TLS certificates to decrypt traffic with
-- [tokio](https://crates.io/crates/tokio) for an async runtime
-- [crossterm](https://crates.io/crates/crossterm) for cross-platform keyboard event reading
-- [axum](https://crates.io/crates/axum) for simple web-server functionality to facilitate the proxying
-- [reqwest](https://crates.io/crates/reqwest) for forwarding HTTP requests
+### Installation
+To install `prxs` and make it available to your system, clone this repository and build from source:
+```bash
+    git clone git@github.com:alex0112/prxs.git;
+    cd prxs && cargo build --release && cargo install --path .
+```
 
-## Additional features / UX Notes:
+Alternatively:
 
-- Config for user preferences in a file (version control)
-- Session (contains target info, regexes, current work, represents a complete snapshot of a current project)
-- Sane defaults for common workflows
-- Fast startup time
-- The tool should have high discoverability (no hidden options, don't make the user read long manuals)
-- The tool should provide a good ad hoc experience for viewing HTTP/TLS traffic transparently.
-- Basic workflows (such as selecting a target and filtering traffic) should be easily configurable in one step
-- Should run well on both Linux and MacOS
+```bash
+    git clone git@github.com:alex0112/prxs.git;
+    cd prxs && cargo run
+```
 
-## Going Forward (Stretch Goals)
-If we finish that and have time, we consider the following features stretch goals:
+Support for a `cargo install` from crates.io is on our roadmap.
 
-- The ability to drop, forward, or copy a request for later repeating
-- The ability to serialize a request into a specific replayable flow
-- The ability to edit a request (preferably in the editor set to `$EDITOR`)
-- Domain filtering with some kind of nice regex thing (it would be cool to integrate ripgrep, fzf, or nushell queries here)
-- (This one's more of a big stretch goal) The ability to generate [nuclei](https://github.com/projectdiscovery/nuclei) templates from existing saved requests to codify an attack and make it repeatable
+### Usage
 
-## Usage
+#### args
+```bash
+Usage: prxs [OPTIONS]
 
-For keybindings and configuration, see `USAGE.md`
+Options:
+  -c, --config <CONFIG_PATH>       The config file to parse
+  -p, --port <PORT>                The port to run on
+  -s, --session [<SESSION_FILE>]   The session file to open
+      --auto-gunzip <AUTO_GUNZIP>  Whether to automatically gunzip request responses [possible values: true, false]
+  -h, --help                       Print help
+  -V, --version                    Print version
+```
+
+#### keystrokes
+See [USAGE.md](https://github.com/alex0112/prxs/blob/main/USAGE.md) for a comprehensive list of keystrokes in the TUI.
+
+(*TL;DR* navigation is vim-like, `j`, and `k` allow navigation through the request list)
+
+#### proxy
+In order to recieve requests, the user must instruct their browser or application of choice to proxy traffic to the application. We find FoxyProxy ([Firefox](https://addons.mozilla.org/en-US/firefox/addon/foxyproxy-standard/), [Chrome](https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp?pli=1)) to be a useful tool in this regard. Point it at `localhost:8080` (or whichever port you specify) while praxis is running and you will start to see traffic.
+
+#### TLS decryption
+The primary reason http traffic inspection is useful is to observe what requests a site or application may be making in plaintext. As it currently stands the TLS decryption portion of praxis is currently under development in the branch `feature/rustls-connects`, and with luck will be merged into `main` soon. 
+
+Until that is working, you will see any TLS encrypted traffic begin to hit the proxy as an [`HTTP CONNECT`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/CONNECT) request against port 443 of the target. You may forward these requests (by pressing `f`) but the response will come back with an error until the TLS decryption layer is functioning properly.
+
+### Editing
+![praxis_editor_demo](https://github.com/alex0112/prxs/assets/7142972/1dbc1579-c111-4c03-970d-e7e8ea8bb801)
+
+As mentioned in the usage document, When focused on a specific request, a user may press `e` to open the request annotations in an editor. Praxis will default to `$EDITOR` when determining what to use, and if nothing is specified will likely open `nano`. We have seen decent results in Neovim, Emacs (both with and without the `-nw` option), and Helix. It is also possible to open a request in VSCode/Codium, but there is a known issue preventing the edited text from being read back to praxis. Your mileage may vary.
+
+## Roadmap:
+(in no particular order)
+
+- TLS decryption
+- Editing focused requests/responses
+- Filtering / Scope definition
+- Session storage (serialized current workflow to a file)
+- Certificate generation
+- Publish crate to crates.io
+- [nuclei](https://github.com/projectdiscovery/nuclei) templates from existing saved requests(?)
+- Tests where appropriate (time was not spent on unit tests in this iteration since most of the code is network oriented)
+
+Additionally, [ARCH.md](https://github.com/alex0112/prxs/blob/main/ARCH.md) contains some of our thoughts about features, design decisions, and possible implementations that may or may not come into use in the actual application.
+
+# Authors
+
+- [June Welker](github.com/itsjunetime)
+- [Alex Larsen](github.com/alex0112)
