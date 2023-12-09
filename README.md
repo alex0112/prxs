@@ -1,5 +1,5 @@
 # Praxis
-
+[![cargo build](https://github.com/alex0112/prxs/actions/workflows/rust.yml/badge.svg)](https://github.com/alex0112/prxs/actions/workflows/rust.yml)
 > Praxis (n.) 
 > 
 > *The practical means by which a thing is accomplished. The opposite of theory.*
