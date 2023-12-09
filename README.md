@@ -8,7 +8,7 @@
 
 `prxs` is a web application penetration testing tool, that allows users to perform common pentesting tasks from their terminal. Users will find it similar to tools such as [BurpSuite](https://portswigger.net/burp) or [MITMProxy](https://mitmproxy.org/). For our rationale and design philosophy, see [RATIONALE.md](https://github.com/alex0112/prxs/blob/main/RATIONALE.md).
 
-## CYA
+### Disclaimer
 You know the drill: *This tool is intended for security research purposes, always gain permission before pentesting someone else's system. The developers of praxis are not liable for your actions or any damages you may cause* Be an [ethical hacker](https://www.synopsys.com/glossary/what-is-ethical-hacking.html#B).
 
 Happy hacking.
