@@ -74,6 +74,7 @@ As mentioned in the usage document, When focused on a specific request, a user m
 - Certificate generation
 - Publish crate to crates.io
 - [nuclei](https://github.com/projectdiscovery/nuclei) templates from existing saved requests(?)
+- Tests where appropriate (time was not spent on unit tests in this iteration since most of the code is network oriented)
 
 Additionally, [ARCH.md](https://github.com/alex0112/prxs/blob/main/ARCH.md) contains some of our thoughts about features, design decisions, and possible implementations that may or may not come into use in the actual application.
 
