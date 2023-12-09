@@ -80,5 +80,5 @@ Additionally, [ARCH.md](https://github.com/alex0112/prxs/blob/main/ARCH.md) cont
 
 # Authors
 
-- [June Welker](github.com/itsjunetime)
-- [Alex Larsen](github.com/alex0112)
+- [June Welker](https://github.com/itsjunetime)
+- [Alex Larsen](https://github.com/alex0112)
