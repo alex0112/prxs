@@ -1,6 +1,7 @@
 # prxs
 
 > Praxis (n.) 
+> 
 >        The practical means by which a thing is accomplished. The opposite of theory.
 
 ![Praxis Application Video]()
