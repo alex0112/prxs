@@ -4,7 +4,7 @@
 > 
 > The practical means by which a thing is accomplished. The opposite of theory.
 
-![Praxis Application Video](https://github.com/alex0112/prxs/assets/7142972/13a1733a-47f2-4577-80ab-193e523d4806)
+![Praxis Application Preview](https://github.com/alex0112/prxs/assets/7142972/8f9c6b83-32ed-43f8-984b-67809bd0a3fe)
 
 `prxs` is a web application penetration testing tool, that allows users to perform common pentesting tasks from their terminal. Users will find it familiar to tools such as [BurpSuite](https://portswigger.net/burp) or [MITMProxy](https://mitmproxy.org/). For our rationale and design philosophy, see [RATIONALE.md](https://github.com/alex0112/prxs/blob/main/RATIONALE.md).
 
@@ -54,18 +54,15 @@ See [USAGE.md](https://github.com/alex0112/prxs/blob/main/USAGE.md) for a compre
 #### proxy
 In order to recieve requests, the user must instruct their browser or application of choice to proxy traffic to the application. We find FoxyProxy ([Firefox](https://addons.mozilla.org/en-US/firefox/addon/foxyproxy-standard/), [Chrome](https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp?pli=1)) to be a useful tool in this regard. Point it at `localhost:8080` (or whichever port you specify) while praxis is running and you will start to see traffic.
 
-Example configuration:
-![FoxyProxy example config]()
-
 #### TLS decryption
-The primary reason http traffic inspection is useful is to observe what requests a site or application may be making in plaintext. As it currently stands the TLS decryption portion of praxis is currently under development under the branch `feature/rustls-connects`, and with luck will be merged into `main` soon. 
+The primary reason http traffic inspection is useful is to observe what requests a site or application may be making in plaintext. As it currently stands the TLS decryption portion of praxis is currently under development in the branch `feature/rustls-connects`, and with luck will be merged into `main` soon. 
 
 Until that is working, you will see any TLS encrypted traffic begin to hit the proxy as an [`HTTP CONNECT`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/CONNECT) request against port 443 of the target. You may forward these requests (by pressing `f`) but the response will come back with an error until the TLS decryption layer is functioning properly.
 
 ### Editing
-![Video of a request annotation](https://github.com/alex0112/prxs/assets/7142972/c15dd25f-355b-48e5-8c06-85d049ccc81e)
+![praxis_editor_demo](https://github.com/alex0112/prxs/assets/7142972/1dbc1579-c111-4c03-970d-e7e8ea8bb801)
 
-As mentioned in the usage document, When focused on a specific request, a user may press `e` to open the request annotations in an editor. Praxis will default to `$EDITOR` when determining what to use, and if nothing is specified will likely open `nano`. We have seen decent results in Neovim, Emacs (both with and without the `-nw` option), and Helix. It is also possible to open a request in VSCode/Codium, but there is a known issue preventing the edited text from being read back to praxis. Your mileage may vary.n
+As mentioned in the usage document, When focused on a specific request, a user may press `e` to open the request annotations in an editor. Praxis will default to `$EDITOR` when determining what to use, and if nothing is specified will likely open `nano`. We have seen decent results in Neovim, Emacs (both with and without the `-nw` option), and Helix. It is also possible to open a request in VSCode/Codium, but there is a known issue preventing the edited text from being read back to praxis. Your mileage may vary.
 
 ## Roadmap:
 (in no particular order)
